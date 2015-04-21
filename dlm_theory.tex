@@ -1,0 +1,225 @@
+\documentclass[12pt]{article}
+
+\usepackage[top=1in, bottom=1in, left=1in, right=1in]{geometry}
+\usepackage{graphicx}
+\usepackage{epsfig}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{booktabs}
+\usepackage{mathptmx}
+\usepackage{caption}
+\usepackage{subcaption}
+
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{define}{Definition}[section]
+\newtheorem{lemma}{Lemma}[section]
+\newtheorem{corollary}{Corollary}[section]
+\newtheorem{proposition}{Proposition}[section]
+
+\usepackage[colorlinks, citecolor=black, linkcolor=black, %
+filecolor=black, urlcolor=blue]{hyperref}
+\usepackage[numbers]{natbib}
+\usepackage{doi}
+\usepackage{algpseudocode}
+
+\renewcommand{\floatpagefraction}{0.9}
+
+\title{Doublet Lattice Theory Document}
+
+\author{Graeme J. Kennedy
+  \thanks{Assistant Professor, School of Aerospace Engineering,
+    Georgia Institute of Technology, Atlanta, GA, email:
+    graeme.kennedy@ae.gatech.edu, phone: 404-894-8911}} 
+\date{}
+
+% Commands for partial derivatives and fractions
+\newcommand{\p}{\partial}
+\newcommand{\f}{\frac}
+\newcommand{\mb}{\mathbf}
+\newcommand{\mbs}{\boldsymbol}
+\newcommand{\ds}{\displaystyle}
+
+\begin{document}
+
+\maketitle
+
+\section{Introduction}
+
+This document contains a brief outline of the DLM theory as it is
+implemented within the python/Fortran DLM contained within this
+repository. This implementation is based on implementation of Albano
+and Rodden, 1969, and the extension using a quartic polynomial by
+Rodden, Taylor and McIntosh, 1998.
+
+The doublet lattice method (DLM) is based on the following expression
+for the normal wash, $w(x, s)$ on a wing in an oscillating flow where
+the $x$-direction is parallel to the free-stream direction:
+%
+\begin{equation}
+  \label{eqn:normal-wash}
+  w(x, s) = \f{1}{8\pi} 
+  \int_{S} \Delta p(\xi, \eta) \, K(x - \xi, s - \eta) \, d\xi d\eta 
+\end{equation}
+where the kernel function $K$ is given by the following expression:
+%
+\begin{equation*}
+  K = e^{-i\omega x_{0}/U} \left[ \f{K_1 T_1}{r_{1}^2} + \f{K_2 T_2}{r_{1}^4} \right]
+\end{equation*}
+where:
+%
+\begin{equation*}
+  x_{0} = x - \xi \qquad
+  y_{0} = y - \eta \qquad
+  z_{0} = z - \zeta \qquad 
+  r_{1} = \sqrt{y_{0}^2 + z_{0}^2}
+\end{equation*}
+
+The terms $T_{1}$ and $T_{2}$ are the normal and transverse
+contributions to the normal wash defined as follows:
+\begin{equation*}
+  \begin{aligned}
+    T_{1} & = \cos(\gamma_r - \gamma_s) \\
+    T_{2} & = (z_{0} \cos \gamma_r - y_{0} \sin \gamma_r)(z_{0} \cos \gamma_r - y_{0} \sin \gamma_r)
+  \end{aligned}
+\end{equation*}
+
+The terms $K_{1}$ and $K_{2}$ are contributions to the kernel function
+given as follows:
+%
+\begin{equation*}
+  \begin{aligned}
+    K_{1} & = I_{1} + \f{Mr_{1}}{R} \f{e^{-ik_1 u_1}}{\sqrt{1 + u_{1}^2}} \\
+    K_{2} & = -3I_{2} - i \f{k_1 M^2r_1^2}{R^2} \f{e^{-ik_1 u_1}}{\sqrt{1 + u_{1}^2}} 
+    - \f{Mr_{1}}{R} \left[ (1 + u_{1}^2) \f{\beta^2r_{1}^2}{R^2} + 
+      2 + \f{Mr_1u_{1}}{R} \right]\f{e^{-ik_1 u_1}}{(1 + u_{1}^2)^{3/2}} \\
+  \end{aligned}
+\end{equation*}
+where the following definitions are used:
+\begin{equation*}
+  \beta^2 = 1 - M^2 \qquad 
+  k_{1} = \f{\omega r_{1}}{U} \qquad 
+  R^2 = x_{0}^2 + \beta^2r_{1}^2 \qquad 
+  u_{1} = \f{MR - x_{0}}{\beta^2r_1}
+\end{equation*}
+
+Finally, $I_{1}$ and $I_{2}$ are integrals that are given as follows:
+%
+\begin{equation}
+  \label{eqn:I-integrals}
+  \begin{aligned}
+    I_{1} = \int_{u_{1}}^{\infty} \f{e^{-ik_1u}}{(1 + u)^{3/2}} \, du \\
+    I_{2} = \int_{u_{1}}^{\infty} \f{e^{-ik_1u}}{(1 + u)^{5/2}} \, du 
+  \end{aligned}
+\end{equation}
+
+The doublet lattice method contains two essential components:
+\begin{enumerate}
+\item The integral expressions~\eqref{eqn:I-integrals} are
+  approximated using an approximation of the function
+  $1 - u/\sqrt{1 + u^2}$
+\item The kernel function itself is approximated using a quartic
+  expression and integrated across the panel length
+\end{enumerate}
+
+\section{Approximate $I_{1}$ and $I_{2}$ integrals}
+
+The $I_{1}$ and $I_{2}$ integrals can be approximated in a similar
+manner. In both cases, the integrals can be expressed as an integral
+in $1 - u/\sqrt{1 + u^2}$. This can be obtained by integrating by
+parts and shifting the expression for the integrand. For $I_{1}$, 
+we can obtain the following expression:
+\begin{equation*}
+  \begin{aligned}
+    I_{1} & = \int_{u_{1}}^{\infty} \f{e^{-ik_1u}}{(1 + u)^{3/2}} \, du \\
+    %
+    & = \left. \f{u e^{-ik_1 u}}{\sqrt{1 + u^2}} \right|_{u=u_{1}}^{\infty} +
+    ik_{1} \int_{u_{1}}^{\infty} \f{ue^{-ik_1 u}}{\sqrt{1 + u^2}} \, du \\
+    %
+    & = \left[1 - \f{u_{1}}{\sqrt{1 + u_1^2}} \right]e^{-ik_{1}u_{1}} -
+    ik_{1} \int_{u_{1}}^{\infty} \left[1 - \f{u}{\sqrt{1 + u^2}} \right] e^{-ik_1 u} \, du  \\
+    %
+    & = \left[1 - \f{u_{1}}{\sqrt{1 + u_1^2}} \right]e^{-ik_{1}u_{1}} - ik_{1} I_{0}
+  \end{aligned}
+\end{equation*}
+where the integral $I_{0}$ is defined as:
+\begin{equation*}
+  I_{0} = \int_{u_{1}}^{\infty} \left[ 1 - \f{u}{\sqrt{1 + u^2}} \right] e^{-ik_1 u} \, du
+\end{equation*}
+
+The second integral can be expressed as follows:
+\begin{equation*}
+    I_{2} = \int_{u_{1}}^{\infty} \f{e^{-ik_1u}}{(1 + u^2)^{5/2}} \, du 
+\end{equation*}
+
+This integral can be simplified as follows:
+%
+\begin{equation*}
+  3 I_{2} = \left[ (2 + ik_{1}u_{1}) \left( 1 - \f{u_{1}}{\sqrt{1 + u_{1}^2}}\right) 
+    - \f{u_{1}}{(1 + u_{1}^2)^{3/2}}\right]e^{-ik_{1}u_{1}} - ik_{1} I_{0} + k_{1}^2J_{0}
+\end{equation*}
+
+The last integral $J_{0}$ is defined as follows:
+%
+\begin{equation*}
+  J_{0} = \int_{u_{1}}^{\infty} u \left[ 1 - \f{u}{\sqrt{1 + u^2}} \right] \, du
+\end{equation*}
+
+The integrals $I_{0}$ and $J_{0}$ can be obtained based on the
+following approximation:
+%
+\begin{equation*}
+  1 - \f{u}{\sqrt{1 + u^{2}}} = \sum_{j=1}^{n} a_{j} e^{-p_{j}u}
+\end{equation*}
+%
+where $n = 12$, $p_{j} = b\,2^{j}$, $b = 0.009054814793$, and the
+remaining coefficients are given in Table~\ref{table:a-coef}.
+%
+\begin{table}[h]
+  \begin{center}
+    \begin{tabular}{l}
+      \toprule
+      Coefficients: $a_{j}$ \\
+      \midrule
+      0.000319759140 \\
+      -0.000055461471 \\
+      0.002726074362 \\
+      0.005749551566 \\
+      0.031455895072 \\
+      0.106031126212 \\
+      0.406838011567 \\
+      0.798112357155 \\
+      -0.417749229098 \\
+      0.077480713894 \\
+      -0.012677284771 \\
+      0.001787032960 \\
+      \bottomrule
+    \end{tabular}
+  \end{center}
+  \caption{Coefficients for the 12-term approximation}
+  \label{table:a-coef}
+\end{table}
+
+Based on these approximations, the integral $I_{0}$ can be
+approximated as follows:
+%
+\begin{equation*}
+  I_{0} \approx \int_{u_{1}}^{\infty} \sum_{j=1}^{n} a_{j} e^{-p_{j}u - ik_{1}u} \, du 
+  %
+  = \sum_{j=1}^{n} \f{a_{j}e^{-(p_{j} + i k_{1})u_{1}}}{p_{j}^2 + k_{1}^2} (p_{j} - i k_1)
+\end{equation*}
+%
+The integral $J_{0}$ can be approximated in a similar manner as
+follows:
+%
+\begin{equation*}
+  J_{0} \approx \int_{u_{1}}^{\infty} \sum_{j=1}^{n} a_{j} u e^{-(p_{j} + ik_{1})u} \, du 
+  %
+  = \sum_{j=1}^{n} \f{a_{j}e^{-(p_{j} + i k_{1})u_{1}}((p_{j} + i k_1)u_{1} + 1)(p_{j} - ik_{1})^2}{(p_{j}^2 + k_{1}^2)^2}
+\end{equation*}
+
+\section{Integration of the approximate kernel function}
+
+
+
+
+
+\end{document}
