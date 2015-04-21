@@ -117,7 +117,7 @@ subroutine evalK1K2Coeff(Kf1, Kf2, r1, u1, k1, beta, R, M)
   I1 = (one - u1*invsqrt)*expk - I*k1*I0
 
   ! Evaluate 3*I2
-  I2 = ((two +  I*k1*u1)*(one - u1*invsqrt) - u1*invsqrt**3)*expk &
+  I2 = ((two + I*k1*u1)*(one - u1*invsqrt) - u1*invsqrt**3)*expk &
        - I*k1*I0 + k1**2*J0
 
   ! Compute the first component of the kernel function
@@ -293,22 +293,22 @@ subroutine computeInputMeshSegment(n, m, x0, span, dihedral, sweep, cr, tr, Xi, 
         ! that yp is the span-wise station and c is the chord position
         ! relative to the 1/4 chord location of this segment. The
         ! tan(sweep) takes care of the 1/4 chord sweep.
-        yp = span*(i-1.0)/n
-        c = cr*(1.0 - tr*yp/span)*((j - 0.75)/m - 0.25)
+        yp = (i-1.0)*span/n
+        c = cr*(1.0 - (1.0 - tr)*yp/span)*((j - 0.75)/m - 0.25)
         Xi(1, counter) = x0(1) + yp*tan(sweep) + c
         Xi(2, counter) = x0(2) + yp
         Xi(3, counter) = x0(3) + yp*tan(dihedral)
 
         ! Compute the outboard doublet location at the 1/4 chord
-        yp = span*i/n
-        c = cr*(1.0 - tr*yp/span)*((j - 0.75)/m - 0.25)
+        yp = i*span/n
+        c = cr*(1.0 - (1.0 - tr)*yp/span)*((j - 0.75)/m - 0.25)
         Xo(1, counter) = x0(1) + yp*tan(sweep) + c
         Xo(2, counter) = x0(2) + yp
         Xo(3, counter) = x0(3) + yp*tan(dihedral)
 
         ! Compute the receiving point at the 3/4 chord
-        yp = span*(i-0.5)/n
-        c = cr*(1.0 - tr*yp/span)*((j - 0.25)/m - 0.25)
+        yp = (i-0.5)*span/n
+        c = cr*(1.0 - (1.0 - tr)*yp/span)*((j - 0.25)/m - 0.25)
         Xr(1, counter) = x0(1) + yp*tan(sweep) + c
         Xr(2, counter) = x0(2) + yp
         Xr(3, counter) = x0(3) + yp*tan(dihedral)
@@ -355,6 +355,7 @@ subroutine computeDoublet(D, omega, U, M, np, Xi, Xo, Xr)
   do s = 1, np
      do r = 1, np
         ! Compute the local panel properties
+        D(s, r) = 0.0_dtype
      end do
   end do
 
