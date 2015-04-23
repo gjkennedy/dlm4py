@@ -46,9 +46,9 @@ filecolor=black, urlcolor=blue]{hyperref}
 
 This document contains a brief outline of the DLM theory as it is
 implemented within the python/Fortran DLM contained within this
-repository. This implementation is based on implementation of Albano
-and Rodden, 1969, and the extension using a quartic polynomial by
-Rodden, Taylor and McIntosh, 1998.
+repository. This implementation is based in part on the method of
+Albano and Rodden, 1969, and the extension by Rodden, Taylor and
+McIntosh, 1998.
 
 The doublet lattice method (DLM) is based on the following expression
 for the normal wash, $w(x, s)$ on a wing in an oscillating flow where
@@ -57,7 +57,7 @@ the $x$-direction is parallel to the free-stream direction:
 \begin{equation}
   \label{eqn:normal-wash}
   w(x, s) = \f{1}{8\pi} 
-  \int_{S} \Delta p(\xi, \eta) \, K(x - \xi, s - \eta) \, d\xi d\eta 
+  \int_{S} \Delta C_p(\xi, \eta) \, K(x - \xi, s - \eta) \, d\xi d\eta 
 \end{equation}
 where the kernel function $K$ is given by the following expression:
 %
@@ -218,6 +218,89 @@ follows:
 
 \section{Integration of the approximate kernel function}
 
+
+
+\section{Steady-state horseshoe vortex code}
+
+The steady state components are calculated based on a horseshoe vortex
+formulation. In this approach, all that is required is a
+Pradtl-weighted distance the bound vortex start and end locations to
+the receiving point. 
+
+These distances are denoted as follows:
+%
+\begin{equation*}
+  \mb{a} = \begin{bmatrix} 
+    (x_{r} - x_{i})/\beta \\
+    y_r - y_i \\
+    z_r - z_i \\
+  \end{bmatrix}
+  \qquad
+  \mb{b} = \begin{bmatrix} 
+    (x_{r} - x_{o})/\beta \\
+    y_r - y_o \\
+    z_r - z_o \\
+  \end{bmatrix}
+\end{equation*}
+%
+where $(x_r, y_r, z_r)$ is the receiving point, $(x_{i}, y_{i},
+z_{i})$ is the inboard vortex line point and $(x_{o}, y_{o}, z_{o})$
+is the outboard vortex point. Note that $\beta = \sqrt{1 - M^2}$.
+
+The velocity induced by the bound vortex segment is given as follows:
+%
+\begin{equation*}
+  \mb{v}_{b} = \f{\Gamma}{4\pi} \f{\mb{a} \times \mb{b} (A + B)}{AB(AB + \mb{a}\cdot \mb{b})}
+\end{equation*}
+where $A = \sqrt{\mb{a}\cdot \mb{a}}$ and $B =
+\sqrt{\mb{b}\cdot\mb{b}}$.  Note that this formulation for $\mb{v}$ is
+singular only when $\mb{a}$ and $\mb{b}$ are co-linear and lie
+pointing towards one another such that $AB = - \mb{a}\cdot \mb{b}$.
+Based on the definitions of $\mb{a}$ and $\mb{b}$, this singularity
+will only occur when the receiving point lies between the inboard and
+outboard points.
+
+To account for the inboard and outboard vorticies traveling from a
+point projected infinitely far downstream, we define the vectors
+$\mb{c}$ and $\mb{d}$ as follows:
+%
+\begin{equation*}
+  \mb{c} = \begin{bmatrix}
+    -\infty \\
+    y_{r} - y_{i} \\ 
+    z_{r} - z_{i}
+  \end{bmatrix}
+  \qquad
+  \mb{d} = \begin{bmatrix}
+    -\infty \\
+    y_{r} - y_{o} \\ 
+    z_{r} - z_{o}
+  \end{bmatrix}
+\end{equation*}
+
+This yields the following expression for the contribution from the
+inboard vortex segment:
+%
+\begin{equation*}
+  \begin{aligned}
+    \mb{v}_{i} & = \lim_{C \rightarrow \infty} \f{\Gamma}{4\pi} \f{\mb{c} \times \mb{a}(A + C)}{AC(AC + \mb{c}\cdot \mb{a})} \\
+    & = \f{\Gamma}{4\pi} \f{-\mb{i} \times \mb{a}}{A(A - \mb{i}\cdot \mb{a})} \\
+    & = \f{\Gamma}{4\pi} \f{\mb{a} \times \mb{i}}{A(A - \mb{i}\cdot \mb{a})} \\
+    & = \f{\Gamma}{4\pi} \f{a_{z} \mb{j} - a_{y}\mb{k}}{A(A - a_x)}
+  \end{aligned}
+\end{equation*}
+Note that we have used the fact that $\lim_{C \rightarrow \infty}
+\mb{c}/C = -\mb{i}$.  Now, accounting for the remaining vortex from
+the outboard point yields the following:
+\begin{equation*}
+  \begin{aligned}
+    \mb{v}_{o} & = \lim_{D \rightarrow \infty}\f{\Gamma}{4\pi} \f{ \mb{b} \times \mb{d}(D + B)}{BD(BD + \mb{b}\cdot \mb{d})} \\
+    & = \f{\Gamma}{4\pi} \f{-\mb{b} \times \mb{i}}{B(B - \mb{i}\cdot \mb{b})} \\
+    & = \f{\Gamma}{4\pi} \f{-b_{z} \mb{j} + b_{y} \mb{k}}{B(B - b_x)}
+  \end{aligned}
+\end{equation*}
+Where we have used the fact that $\lim_{D \rightarrow \infty} \mb{d}/D
+= -\mb{i}$.
 
 
 
