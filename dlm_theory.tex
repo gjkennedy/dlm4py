@@ -50,13 +50,67 @@ repository. This implementation is based in part on the method of
 Albano and Rodden, 1969, and the extension by Rodden, Taylor and
 McIntosh, 1998.
 
+The pressure potential equation can be written as follows:
+%
+\begin{equation*}
+  \beta^{2} p_{xx} + p_{yy} + p_{zz} - \f{2U}{a^2} p_{xt} - \f{1}{a^2} p_{tt} = 0
+\end{equation*}
+where $p$ is both the pressure and the pressure potential. Here the
+free-stream is aligned with the $x$-coordinate axis. Solutions to the
+pressure potential equation can be written as follows:
+%
+\begin{equation*}
+  p = \f{1}{R} f(t - \tau)
+\end{equation*}
+where $f$ is a general function and $\tau$ and $R$ are defined as
+follows:
+%
+\begin{equation*}
+  \begin{aligned}
+    R & = \sqrt{(x - \xi)^2 + \beta^2((y - \eta)^2 + (z - \zeta)^2)} \\
+    \tau & = \f{R - M(x - \xi)}{a\beta^2}
+  \end{aligned}
+\end{equation*}
+Now, specializing this general expression to harmonic behavior
+in time, we can arrive at the following expression:
+%
+\begin{equation*}
+  p = \f{1}{R} e^{\left[ \f{i\omega}{a\beta^2}(M(x - \xi) - R)\right]} e^{i\omega t}
+\end{equation*}
+
+
+\begin{equation*}
+  \begin{aligned}
+    \psi & = \f{\p}{\p z} \left[ \f{1}{R} e^{\left[ \f{i\omega}{a\beta^2}(M(x - \xi) - R)\right]} \right] \\
+    & = \beta^2 (z - \zeta)\left[ \f{1}{R^2} - \f{1}{R^3}\right]e^{\left[ \f{i\omega}{a\beta^2}(M(x - \xi) - R)\right]}
+  \end{aligned}
+\end{equation*}
+
+
+\begin{equation*}
+  \phi = -\f{1}{U} e^{-\f{i\omega x}{U}} \int_{-\infty}^{x} e^{\f{i\omega x}{U}} \psi \, dx
+\end{equation*}
+
+\begin{equation*}
+  \hat{w} = - \f{1}{U} \f{\p \phi}{\p z} = \f{1}{U^2} e^{-\f{i\omega x}{U}} \int_{-\infty}^{x} e^{\f{i\omega x}{U}} \psi \, dx
+\end{equation*}
+
+
+\begin{equation*}
+  \hat{w} = \f{1}{4\pi \rho U^2} \int_{S} \Delta p e^{-\f{i\omega(x - \xi)}{U}} 
+  \f{\p^2}{\p z^2} \left[ 
+    \int_{-\infty}^{x - \xi} \f{1}{R} e^{i\omega\left( \f{x}{U} - \f{R - Mx}{a\beta^2} \right)} \, dx 
+    \right] \, dS
+\end{equation*}
+
+
 The doublet lattice method (DLM) is based on the following expression
 for the normal wash, $w(x, s)$ on a wing in an oscillating flow where
 the $x$-direction is parallel to the free-stream direction:
 %
 \begin{equation}
   \label{eqn:normal-wash}
-  w(x, s) = \f{1}{8\pi} 
+  \hat{w}(x, s) = \f{1}{8\pi} 
   \int_{S} \Delta C_p(\xi, \eta) \, K(x - \xi, s - \eta) \, d\xi d\eta 
 \end{equation}
 where the kernel function $K$ is given by the following expression:

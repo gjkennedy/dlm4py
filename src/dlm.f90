@@ -1,4 +1,4 @@
-! dlm.f90: A simple python code for oscillating aerodynamic analysis
+! dlm.f90: A simple fortran code for oscillating aerodynamic analysis
 !
 ! Copyright (c) 2015 Graeme Kennedy. All rights reserved. 
 !
@@ -131,7 +131,7 @@ subroutine evalK1K2Coeff(Kf1, Kf2, r1, u1, k1, beta, R, M)
      I10 = one - I*k1*I0
      
      ! Evaluate 3*I2
-     I20 = two - I*k1*I0 + k1**2*J0
+     I20 = two - I*k1*I0 + J0*k1**2
 
      ! Evaluate the approximate integrals I0 and J0
      u1pos = -u1
@@ -145,7 +145,7 @@ subroutine evalK1K2Coeff(Kf1, Kf2, r1, u1, k1, beta, R, M)
      
      ! Evaluate 3*I2
      I21 = ((two + I*k1*u1pos)*(one - u1pos*invsqrt) &
-          - u1pos*invsqrt**3)*expk - I*k1*I0 + k1**2*J0
+          - u1pos*invsqrt**3)*expk - I*k1*I0 + J0*k1**2
 
      I1 = cmplx(2.0*real(I10) - real(I11), aimag(I11), kind=dtype)
      I2 = cmplx(2.0*real(I20) - real(I21), aimag(I21), kind=dtype)
@@ -164,7 +164,7 @@ subroutine evalK1K2Coeff(Kf1, Kf2, r1, u1, k1, beta, R, M)
      
      ! Evaluate 3*I2
      I2 = ((two + I*k1*u1)*(one - u1*invsqrt) &
-          - u1*invsqrt**3)*expk - I*k1*I0 + k1**2*J0
+          - u1*invsqrt**3)*expk - I*k1*I0 + J0*k1**2
   end if
 
   ! Compute the first component of the kernel function
@@ -178,7 +178,7 @@ subroutine evalK1K2Coeff(Kf1, Kf2, r1, u1, k1, beta, R, M)
 end subroutine evalK1K2Coeff
 
 subroutine evalKernelNumerator(Kf1, Kf2, omega, U, beta, M, &
-     x0, y0, z0, cosr, sinr, coss, sins)
+     x0, r1, R, T1, T2, steadykernel, epstol)
   ! Evaluate the two components of the kernel function which are
   ! required for the evaluation of the influence coeffficients. These
   ! coefficients are the difference between the oscillator and
@@ -199,61 +199,49 @@ subroutine evalKernelNumerator(Kf1, Kf2, omega, U, beta, M, &
   use precision
   implicit none
 
+  logical, intent(in) :: steadykernel
   complex(kind=dtype), intent(out) :: Kf1, Kf2
-  real(kind=dtype), intent(in) :: omega, U, beta, M, x0, y0, z0
-  real(kind=dtype), intent(in) :: coss, sins, cosr, sinr
+  real(kind=dtype), intent(in) :: omega, U, beta, M, x0, r1, R
+  real(kind=dtype), intent(in) :: T1, T2, epstol
   
   ! Local temporary variables
   complex(kind=dtype) :: expk
-  real(kind=dtype) :: r1, R, k1, u1, T1, T2, Kf10, Kf20
-  complex(kind=dtype) :: Kf11, Kf21
+  real(kind=dtype) :: k1, u1, Kf10, Kf20
 
   ! Constants used in this function
   real(kind=dtype), parameter :: zero = 0.0_dtype
+  real(kind=dtype), parameter :: one = 1.0_dtype
+  real(kind=dtype), parameter :: two = 2.0_dtype
   complex(kind=dtype), parameter :: I = cmplx(0.0, 1.0, kind=dtype)
-
-  ! Conmpute the distances
-  r1 = sqrt(y0**2 + z0**2)
-  R = sqrt(x0**2 + beta**2*(y0**2 + z0**2))
 
   ! Compute the k1 and u1 coefficients used elsewhere
   k1 = omega*r1/U
-  if (r1 == zero) then
-     if (M*R > x0) then
-        u1 = 1D20
-     else if (M*R < x0) then
-        u1 = -1D20
-     else
-        u1 = 0.0
-     endif
+  if (r1 <= epstol) then
+     u1 = (M*R - x0)/(epstol*beta**2)
   else
      u1 = (M*R - x0)/(r1*beta**2)
   end if
 
-  ! T1 = cos(gr - gs)
-  T1 = cosr*coss + sinr*sins
-
-  ! T2 = (z0*cos(gr) - y0*sin(gr))*(z0*cos(gs) - y0*sin(gs))
-  T2 = (z0*coss - y0*sins)*(z0*cosr - y0*sinr)
-
-  call evalK1K2Coeff(Kf11, Kf21, r1, u1, k1, beta, R, M)
+  call evalK1K2Coeff(Kf1, Kf2, r1, u1, k1, beta, R, M)
 
   ! Compute the zero-frequency contributions from the coefficients
-  Kf10 = 1.0 + x0/R
-  Kf20 = -2.0 - (x0/R)*(2.0 + (beta*r1/R)**2)
-  
+  if (steadykernel) then
+     Kf10 = one + x0/R
+     Kf20 = -two - (x0/R)*(two + (beta*r1/R)**2)
+  else
+     Kf10 = zero
+     Kf20 = zero
+  end if
+
   ! Complete the value values of the kernel function
   expk = exp(-I*omega*x0/U)
-  ! Kf1 = expk*(Kf11 - Kf10)*T1
-  ! Kf2 = expk*(Kf21 - Kf20)*T2
-
-  Kf1 = expk*Kf11*T1
-  Kf2 = expk*Kf21*T2
+  Kf1 = (Kf1*expk - Kf10)*T1
+  Kf2 = (Kf2*expk - Kf20)*T2
 
 end subroutine evalKernelNumerator
 
 subroutine computeQuadDoubletCoeff(dinf, omega, U, beta, M, &
-     dxav, xr, xi, xo, e, cosr, sinr, coss, sins)
+     dxav, xr, xi, xo, e, cosr, sinr, coss, sins, steadykernel, epstol)
   ! Evaluate the influence coefficient between a sending panel and a
   ! recieving point using a quadratic approximation across a panel.
 
@@ -262,8 +250,9 @@ subroutine computeQuadDoubletCoeff(dinf, omega, U, beta, M, &
   implicit none
 
   ! Input/output arguments
+  logical, intent(in) :: steadykernel
   complex(kind=dtype), intent(out) :: dinf
-  real(kind=dtype), intent(in) :: omega, U, beta, M
+  real(kind=dtype), intent(in) :: omega, U, beta, M, epstol
   real(kind=dtype), intent(in) :: dxav, xr(3), xi(3), xo(3)
   real(kind=dtype), intent(in) :: e, cosr, sinr, coss, sins
 
@@ -276,7 +265,8 @@ subroutine computeQuadDoubletCoeff(dinf, omega, U, beta, M, &
 
   ! The kernel functions evaluate at the different points
   complex(kind=dtype) :: Ki1, Ki2, Km1, Km2, Ko1, Ko2
-  complex(kind=dtype) :: A1, B1, C1, A2, B2, C2
+  real(kind=dtype) :: r1, R, T1, T2
+  complex(kind=dtype) :: A1, B1, C1, A2, B2, C2, alpha
 
   ! The coefficients for the horseshoe vortex computation
   real(kind=dtype) :: vy, vz, a(3), b(3), anrm, bnrm, ainv, binv
@@ -289,109 +279,122 @@ subroutine computeQuadDoubletCoeff(dinf, omega, U, beta, M, &
 
   fact = dxav/(8.0*PI)
 
-  dinf1 = 0.0
-  dinf2 = 0.0
+  dinf0 = zero
+  dinf1 = zero
+  dinf2 = zero
 
   if (omega > 0.0) then
+     ! T1 = cos(gr - gs)
+     T1 = cosr*coss + sinr*sins
+
      ! Compute the kernel function at the inboard point
      x0 = xr(1) - xi(1)
      y0 = xr(2) - xi(2)
      z0 = xr(3) - xi(3)
+     T2 = (z0*coss - y0*sins)*(z0*cosr - y0*sinr)
+
+     ! Conmpute the distances
+     r1 = sqrt(y0**2 + z0**2)
+     R = sqrt(x0**2 + beta**2*(y0**2 + z0**2))
      call evalKernelNumerator(Ki1, Ki2, omega, U, beta, M, &
-          x0, y0, z0, cosr, sinr, coss, sins)
+          x0, r1, R, T1, T2, steadykernel, epstol)
      
      ! Evaluate the kernel function at the outboard point
      x0 = xr(1) - xo(1)
      y0 = xr(2) - xo(2)
      z0 = xr(3) - xo(3)
+     T2 = (z0*coss - y0*sins)*(z0*cosr - y0*sinr)
+
+     ! Conmpute the distances
+     r1 = sqrt(y0**2 + z0**2)
+     R = sqrt(x0**2 + beta**2*(y0**2 + z0**2))
      call evalKernelNumerator(Ko1, Ko2, omega, U, beta, M, &
-          x0, y0, z0, cosr, sinr, coss, sins)
+          x0, r1, R, T1, T2, steadykernel, epstol)
      
      ! Evaluate the kennel function at the mid-point
      x0 = xr(1) - half*(xi(1) + xo(1))
      y0 = xr(2) - half*(xi(2) + xo(2))
      z0 = xr(3) - half*(xi(3) + xo(3))
+     T2 = (z0*coss - y0*sins)*(z0*cosr - y0*sinr)
+
+     ! Conmpute the distances
+     r1 = sqrt(y0**2 + z0**2)
+     R = sqrt(x0**2 + beta**2*(y0**2 + z0**2))
      call evalKernelNumerator(Km1, Km2, omega, U, beta, M, &
-          x0, y0, z0, cosr, sinr, coss, sins)
-     
+          x0, r1, R, T1, T2, steadykernel, epstol)
+
      ! Compute the A, B and C coefficients for the first term
-     A1 = (Ki1 - 2*Km1 + Ko1)/(2*e**2)
-     B1 = (Ko1 - Ki1)/(2*e)
+     A1 = (Ki1 - 2.0*Km1 + Ko1)/(2.0*e**2)
+     B1 = (Ko1 - Ki1)/(2.0*e)
      C1 = Km1
 
      ! Compute the A, B and C coefficients for the second term
-     A2 = (Ki2 - 2*Km2 + Ko2)/(2*e**2)
-     B2 = (Ko2 - Ki2)/(2*e)
+     A2 = (Ki2 - 2.0*Km2 + Ko2)/(2.0*e**2)
+     B2 = (Ko2 - Ki2)/(2.0*e)
      C2 = Km2
 
-     ! Print out the coefficients
-     ! write(*,*) ' '
-     ! write(*,*) 'x0 = ', x0, y0, z0
-     ! write(*,*) 'A1 = ', A1
-     ! write(*,*) 'B1 = ', B1
-     ! write(*,*) 'C1 = ', C1
-     
      ! Compute horizontal and vertical distances from the origin in
      ! the local ref. frame
      eta = y0*coss + z0*sins
      zeta = -y0*sins + z0*coss
      
      ! First compute the F-integral
-     if (zeta == zero) then
+     if (abs(zeta) < epstol*e) then
         F = 2*e/(eta**2 - e**2)
      else 
-        F = atan2(2*e*abs(zeta), eta*2 + zeta**2 - e**2)/abs(zeta)
+        F = atan(2*e*abs(zeta)/(eta**2 + zeta**2 - e**2))/abs(zeta)
      end if
 
      ! Compute the contribution from the integral of 
      ! (A1*y**2 + B1*y + C1)/((eta - y)**2 + zeta**2)
      dinf1 = (((eta**2 - zeta**2)*A1 + eta*B1 + C1)*F &
-          + (0.5*B1 + eta*A1)*log(((eta - e)**2 + zeta**2)/((eta + e)**2 + zeta**2)) &
-          + 2.0*e*A1)
+          + (0.5*B1 + eta*A1)*log(((eta - e)**2 + zeta**2)/ &
+          ((eta + e)**2 + zeta**2)) + 2.0*e*A1)
 
-     if (zeta == zero) then
+     if (abs(zeta) < epstol*e) then
         dinf2 = zero
      else
         ! Compute the contribution from the integral of 
         ! (A2*y**2 + B2*y + C2)/((eta - y)**2 + zeta**2)**2
-        dinf2 = 0.5*(((eta**2 + zeta**2)*A2 + eta*B2 + C2)*F &
-             + (((eta**2 + zeta**2)*eta + (eta**2 - zeta**2)*e)*A2 &
-             + (eta**2 + zeta**2 + eta*e)*B2 + (eta + e)*C2)/((eta + e)**2 + zeta**2) &
-             - (((eta**2 + zeta**2)*eta - (eta**2 - zeta**2)*e)*A2 &
-             + (eta**2 + zeta**2 - eta*e)*B2 + (eta - e)*C2)/((eta - e)**2 + zeta**2))/zeta**2
+        alpha = (e/zeta)**2*(one - (eta**2 + zeta**2 - e**2)/(2*e)*F)
+
+        dinf2 = e/(eta**2 + zeta**2 - e**2)*(( &
+             (2.0*(eta**2 + zeta**2 + e**2)*(e**2*A2 + C2) + 4.0*eta*e**2*B2))/ &
+             (((eta + e)**2 + zeta**2)*((eta - e)**2 + zeta**2)) &
+             - (alpha/e**2)*((eta**2 + zeta**2)*A2 + eta*B2 + C2))
      end if
   end if
 
-  ! Compute the term dinf0 from a horseshoe vortex method. First add
-  ! the contribution from the inboard and outboard vorticies
-  a(1) = (xr(1) - xi(1))/beta
-  a(2) = (xr(2) - xi(2))
-  a(3) = (xr(3) - xi(3))
-  anrm = sqrt(a(1)**2 + a(2)**2 + a(3)**2)
-  ainv = one/(anrm*(anrm - a(1)))
-
-  b(1) = (xr(1) - xo(1))/beta
-  b(2) = (xr(2) - xo(2))
-  b(3) = (xr(3) - xo(3))
-  bnrm = sqrt(b(1)**2 + b(2)**2 + b(3)**2)
-  binv = one/(bnrm*(bnrm - b(1)))
-
-  vy =  a(3)*ainv - b(3)*binv
-  vz = -a(2)*ainv + b(2)*binv
-  
-  ! Now, add the contribution from the bound vortex
-  ainv = one/(anrm*bnrm*(anrm*bnrm + a(1)*b(1) + a(2)*b(2) + a(3)*b(3)))
-  vy = vy + (a(3)*b(1) - a(1)*b(3))*(anrm + bnrm)*ainv
-  vz = vz + (a(1)*b(2) - a(2)*b(1))*(anrm + bnrm)*ainv
-
-  ! Compute the steady normalwash
-  dinf0 = sinr*vy - cosr*vz
-
-  dinf0 = 0.0
+  if (steadykernel) then
+     ! Compute the term dinf0 from a horseshoe vortex method. First add
+     ! the contribution from the inboard and outboard vorticies
+     a(1) = (xr(1) - xi(1))/beta
+     a(2) = (xr(2) - xi(2))
+     a(3) = (xr(3) - xi(3))
+     anrm = sqrt(a(1)**2 + a(2)**2 + a(3)**2)
+     ainv = one/(anrm*(anrm - a(1)))
+     
+     b(1) = (xr(1) - xo(1))/beta
+     b(2) = (xr(2) - xo(2))
+     b(3) = (xr(3) - xo(3))
+     bnrm = sqrt(b(1)**2 + b(2)**2 + b(3)**2)
+     binv = one/(bnrm*(bnrm - b(1)))
+     
+     vy =  a(3)*ainv - b(3)*binv
+     vz = -a(2)*ainv + b(2)*binv
+     
+     ! Now, add the contribution from the bound vortex
+     ainv = one/(anrm*bnrm*(anrm*bnrm + a(1)*b(1) + a(2)*b(2) + a(3)*b(3)))
+     vy = vy + (a(3)*b(1) - a(1)*b(3))*(anrm + bnrm)*ainv
+     vz = vz + (a(1)*b(2) - a(2)*b(1))*(anrm + bnrm)*ainv
+     
+     ! Compute the steady normalwash
+     dinf0 = -(sinr*vy - cosr*vz)
+  end if
 
   ! Add up all the contributions to the doublet
   dinf = fact*(dinf0 + dinf1 + dinf2)
-
+  
 end subroutine computeQuadDoubletCoeff
 
 subroutine computeInputMeshSegment(n, m, x0, span, dihedral, sweep, cr, tr, &
@@ -455,8 +458,7 @@ subroutine computeInputMeshSegment(n, m, x0, span, dihedral, sweep, cr, tr, &
         Xr(3, counter) = x0(3) + yr*tan(dihedral)
 
         ! Compute the average chord length of this panel
-        dXav(counter) = 0.5*cr*((1.0 - (1.0 - tr)*yo/span) &
-             + (1.0 - (1.0 - tr)*yi/span))/m
+        dXav(counter) = 0.5*(cr/m)*(2.0 - (1.0 - tr)*(yi + yo)/span)
 
         ! Update the counter location
         counter = counter + 1
@@ -465,8 +467,69 @@ subroutine computeInputMeshSegment(n, m, x0, span, dihedral, sweep, cr, tr, &
 
 end subroutine computeInputMeshSegment
 
+subroutine computeSurfaceSegment(n, m, x0, span, dihedral, sweep, cr, tr, &
+     X, conn)
+  ! This routine computes the surface points for a surface mesh
+  ! corresponding to the given lifting segment. This routine computes
+  ! all quadrilateral surface point locations and adds them to the
+  ! vector X.
+  !
+  ! Input:
+  ! n:        the number of span-wise panels
+  ! m:        the number of chord-wise panels
+  ! span:     the semi-span of the segment
+  ! dihedral: the wing dihedral
+  ! sweep:    the wing sweep
+  ! cr:       the root chord
+  ! tr:       the taper ratio (tip chord = tr*cr)
+  !
+  ! Output:
+  ! X         the surface locations
+  
+  use precision
+  implicit none
+
+  ! Input/output specifications
+  integer, intent(in) :: n, m
+  integer, intent(inout) :: conn(4,n*m)
+  real(kind=dtype), intent(in) :: x0(3), span, dihedral, sweep, cr, tr
+  real(kind=dtype), intent(inout) :: X(3,(n+1)*(m+1))
+
+  ! Temporary variables
+  integer :: i, j, counter
+  real(kind=dtype) :: y, c
+
+  ! First, set the x, y, z locations
+  do i = 1, n+1
+     do j = 1, m+1
+        ! Compute the x/y/z locations of the connectivity mesh for
+        ! this lifting segment.
+        counter = j + (i-1)*(m+1)
+        y = (i-1.0)*span/n
+        c = cr*(1.0 - (1.0 - tr)*y/span)*((j - 1.0_dtype)/m - 0.25_dtype)
+        X(1, counter) = x0(1) + y*tan(sweep) + c
+        X(2, counter) = x0(2) + y
+        X(3, counter) = x0(3) + y*tan(dihedral)
+     end do
+  end do
+
+  ! Now, set connectivity
+  do i = 1, n
+     do j = 1, m
+        ! Compute the x/y/z locations of the connectivity mesh for
+        ! this lifting segment
+        counter = j + (i-1)*m
+        conn(1, counter) = j-1 + (i-1)*(m+1)
+        conn(2, counter) = j + (i-1)*(m+1)
+        conn(3, counter) = j + i*(m+1)
+        conn(4, counter) = j-1 + i*(m+1)
+     end do
+  end do
+
+end subroutine computeSurfaceSegment
+
 subroutine computeInfluenceMatrix(D, omega, U, M, np, &
-     Xi, Xo, Xr, dXav, symmetric)
+     Xi, Xo, Xr, dXav, symmetric, steadykernel, epstol)
   ! This routine computes the complex influence coefficient
   ! matrix. The input consists of a number of post-processed
   ! connectivity and nodal locations are given and locations,
@@ -489,15 +552,16 @@ subroutine computeInfluenceMatrix(D, omega, U, M, np, &
   implicit none
 
   ! Input/output types
+  logical, intent(in) :: steadykernel
   integer, intent(in) :: np, symmetric
   complex(kind=dtype), intent(inout) :: D(np, np)
-  real(kind=dtype), intent(in) :: omega, U, M
+  real(kind=dtype), intent(in) :: omega, U, M, epstol
   real(kind=dtype), intent(in) :: Xi(3,np), Xo(3,np), Xr(3,np), dXav(np)
 
   ! Temporary data used internally
   integer :: r, s
   real(kind=dtype) :: beta, xrsymm(3), sinsymm
-  real(kind=dtype) :: lr, pe(np), pcos(np), psin(np)
+  real(kind=dtype) :: pe(np), pcos(np), psin(np)
   complex(kind=dtype) :: dtmp
 
   ! Compute the compressibility factor
@@ -520,7 +584,7 @@ subroutine computeInfluenceMatrix(D, omega, U, M, np, &
            ! Compute the panel influence coefficient
            call computeQuadDoubletCoeff(D(r, s), omega, U, beta, M, &
                 dXav(s), Xr(:, r), Xi(:, s), Xo(:, s), pe(s), &
-                pcos(r), psin(r), pcos(s), psin(s))
+                pcos(r), psin(r), pcos(s), psin(s), steadykernel, epstol)
         end do
      end do
   else
@@ -529,7 +593,7 @@ subroutine computeInfluenceMatrix(D, omega, U, M, np, &
            ! Compute the panel influence coefficient
            call computeQuadDoubletCoeff(D(r, s), omega, U, beta, M, &
                 dXav(s), Xr(:, r), Xi(:, s), Xo(:, s), pe(s), &
-                pcos(r), psin(r), pcos(s), psin(s))
+                pcos(r), psin(r), pcos(s), psin(s), steadykernel, epstol)
 
            ! Compute the influence from the same panel, but the
            ! reflected point
@@ -540,34 +604,138 @@ subroutine computeInfluenceMatrix(D, omega, U, M, np, &
 
            call computeQuadDoubletCoeff(dtmp, omega, U, beta, M, &
                 dXav(s), xrsymm, Xi(:, s), Xo(:, s), pe(s), &
-                pcos(r), sinsymm, pcos(s), psin(s))
+                pcos(r), sinsymm, pcos(s), psin(s), steadykernel, epstol)
            D(r, s) = D(r, s) + dtmp
         end do
      end do
   end if
 end subroutine computeInfluenceMatrix
 
-subroutine computePeriodicBC(rhs, aoa, omega, U, np, Xi, Xo)
-  
+subroutine addCpForces(np, n, qinf, Cp, X, conn, forces)
+  ! Given the coefficient of pressure, compute the forces at each
+  ! node. This distributes the force to each of the corresponding
+  ! nodes. This function can be used to compute the forces that act on
+  ! a finite-element mesh.
+  !
+  ! Input:
+  ! np:     the number of panels
+  ! n:      the number of nodes
+  ! qinf:   the dynamic pressure
+  ! Cp:     the coefficient of pressure on each panel
+  ! X:      the nodal locations
+  ! conn:   the connectivity
+  !
+  ! Output:
+  ! forces: the force values at each node
+
   use precision
   implicit none
 
   ! Input/output types
-  integer, intent(in) :: np
-  complex(kind=dtype), intent(inout) :: rhs(np)
-  real(kind=dtype), intent(in) :: aoa, omega, U
-  real(kind=dtype), intent(in) :: Xi(3,np), Xo(3,np)
+  integer, intent(in) :: np, n, conn(4,np)
+  complex(kind=dtype), intent(in) :: Cp(np)
+  real(kind=dtype), intent(in) :: qinf, X(3,n)
+  complex(kind=dtype), intent(inout) :: forces(3,n)
 
-  integer :: i
-  real(kind=dtype) :: lr, cosr
+  ! Temporary data used internally
+  integer :: i, j
+  real(kind=dtype) :: a(3), b(3), normal(3)
 
-  ! Set the normal wash in each panel
   do i = 1, np
-     ! Compute
-     lr = sqrt((Xo(2,i) - Xi(2,i))**2 + (Xo(3,i) - Xi(3,i))**2)
-     cosr = (Xo(2,i) - Xi(2,i))/lr
+     ! Compute the a/b vectors
+     do j = 1, 3
+        a(j) = X(j, conn(3,i)+1) - X(j, conn(1,i)+1)
+        b(j) = X(j, conn(4,i)+1) - X(j, conn(2,i)+1)
+     end do
 
-     rhs(i) = sin(aoa)*cosr*exp(cmplx(0.0_dtype, -omega, kind=dtype))
+     ! Compute n = a x b. Note that the normal is not normalized since
+     ! the area of the cell is equal to 1/2 the norm of a x b. This
+     ! accounts for the factor of .125 on each cell vertex (1/2*1/4).
+     normal(1) = a(2)*b(3) - a(3)*b(2)
+     normal(2) = a(3)*b(1) - a(1)*b(3)
+     normal(3) = a(1)*b(2) - a(2)*b(1)
+
+     ! Add the forces
+     do j = 1, 4
+        forces(1, conn(j,i)+1) = forces(1, conn(j,i)+1) + 0.125*qinf*Cp(i)*normal(1)
+        forces(2, conn(j,i)+1) = forces(2, conn(j,i)+1) + 0.125*qinf*Cp(i)*normal(2)
+        forces(3, conn(j,i)+1) = forces(3, conn(j,i)+1) + 0.125*qinf*Cp(i)*normal(3)
+     end do
   end do
 
-end subroutine computePeriodicBC
+end subroutine addCpForces
+
+subroutine getModeBCs(np, n, mode, X, conn, vwash, dwash)
+  ! Given the mode shape at the nodes of the DLM mesh, compute the
+  ! contributions to the boundary conditions at the receiving
+  ! points. Note that there are contributions from both the
+  ! displacement and the normal component of the velocity.
+  ! 
+  !
+  ! Input:
+  ! np:     the number of panels
+  ! n:      the number of nodes
+  ! mode:   the mode shape
+  ! X:      the nodal locations
+  ! conn:   the connectivity
+  !
+  ! Output:
+  ! vwash:  the normal wash due to velocities
+  ! dwash:  the normal wash due to the change in orientation
+
+  use precision
+  implicit none
+
+  ! Input/output types
+  integer, intent(in) :: np, n, conn(4,np)
+  real(kind=dtype), intent(in) :: X(3,n)
+  real(kind=dtype), intent(in) :: mode(3,n)
+  real(kind=dtype), intent(inout) :: vwash(np), dwash(np)
+
+  ! Temporary data used internally
+  integer :: i, j
+  real(kind=dtype) :: a(3), b(3), normal(3), nrm, dx
+  real(kind=dtype) :: up(3)
+
+  do i = 1, np
+     ! Zero-out the components of the displacement (or velocity) at
+     ! the center point.
+     up(:) = 0.0_dtype
+
+     ! Compute the values of the displacement at the receiving point
+     do j = 1, 3
+        up(j) = 0.5*( &
+             0.25*mode(j, conn(1,i)+1) + 0.75*mode(j, conn(2,i)+1) + &
+             0.25*mode(j, conn(4,i)+1) + 0.75*mode(j, conn(3,i)+1))
+     end do
+
+     ! Compute the a/b vectors
+     do j = 1, 3
+        a(j) = X(j, conn(3,i)+1) - X(j, conn(1,i)+1)
+        b(j) = X(j, conn(4,i)+1) - X(j, conn(2,i)+1)
+     end do
+
+     ! Compute n = a x b
+     normal(1) = a(2)*b(3) - a(3)*b(2)
+     normal(2) = a(3)*b(1) - a(1)*b(3)
+     normal(3) = a(1)*b(2) - a(2)*b(1)
+
+     ! Compute the area in order to normalize the normal vector
+     nrm = sqrt(normal(1)**2 + normal(2)**2 + normal(3)**2)
+
+     ! Set the normal displacement/velocity
+     vwash(i) = -(normal(1)*up(1) + normal(2)*up(2) + normal(3)*up(3))/nrm
+
+     ! Compute d(mode)/dx
+     ! First, compute the average step in x
+     dx = 0.5*( &
+          (X(1, conn(2,i)+1) - X(1, conn(1,i)+1)) + &
+          (X(1, conn(3,i)+1) - X(1, conn(4,i)+1)))
+
+     ! Compute the derivative d(mode)/dx
+     dwash(i) = -0.5*( &
+          (mode(3, conn(2,i)+1) - mode(3, conn(1,i)+1)) + &
+          (mode(3, conn(3,i)+1) - mode(3, conn(4,i)+1)))/dx
+  end do
+
+end subroutine getModeBCs
