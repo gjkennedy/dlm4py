@@ -3,15 +3,11 @@ Perform either the Blair or Rodden test cases
 '''
 
 import sys
-
-# Do a quick and dirty path append
-sys.path.append('../src')
-
 import numpy as np
 import matplotlib.pyplot as plt
 from mpi4py import MPI
 from tacs import TACS, elements, constitutive, functions
-from pydlm import DLM
+from dlm4py import DLM
 from tacs_opt_tools import StructureOptTools 
 
 # Create the DLM object and add the mesh

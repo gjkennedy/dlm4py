@@ -8,7 +8,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from mpi4py import MPI
 from tacs import TACS, elements, constitutive
-from pydlm import DLM
+from dlm4py import DLM
 
 # Create the DLM object and add the mesh
 dlm_solver = DLM(is_symmetric=1)

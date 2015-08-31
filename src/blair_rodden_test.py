@@ -4,7 +4,7 @@ Perform either the Blair or Rodden test cases
 
 import numpy as np
 import sys
-from pydlm import DLM
+from dlm4py import DLM
 
 try:
     import matplotlib.pyplot as plt
