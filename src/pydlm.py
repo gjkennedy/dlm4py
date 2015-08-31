@@ -1,16 +1,12 @@
 '''
 This is the python-level interface for the dlm code.
 '''
+
 import numpy as np
 import sys
 from tacs import TACS, elements, constitutive
 from mpi4py import MPI
 import dlm
-
-try:
-    import matplotlib.pyplot as plt
-except:
-    pass
 
 class DLM:
     def __init__(self, is_symmetric=1, epstol=1e-12):
@@ -277,385 +273,181 @@ class DLM:
 
         return
 
-# Create the DLM object and add the mesh
-dlm_solver = DLM(is_symmetric=1)
+    def initStructure(self, tacs, max_h_size=0.5,
+                      gauss_order=2):
+        '''
+        Set up the load and displacement transfer object for a general
+        TACS finite-element model.
+        '''
 
-if 'blair' in sys.argv:
-    # Perform the highly-simplified test from Blair
-    nchord = 3
-    nspan = 3
+        # Get the communicator from the TACSAssembler object
+        self.tacs = tacs
+        comm = self.tacs.getMPIComm()
 
-    # Set the geometry
-    semi_span = 12.0
-    chord = 12.0
-    taper = 1.0
-    sweep = 0.0
-    dihedral = 0.0
+        # Now, set up the load and displacement transfer object
+        struct_root = 0
+        aero_root = 0
 
-    dlm_solver.addMeshSegment(nspan, nchord, semi_span, chord,
-                              sweep=sweep, dihedral=dihedral, 
-                              taper_ratio=taper)
+        # Only use the first rank as an aerodynamic processor
+        aero_member = 0
+        if comm.rank == 0:
+            aero_member = 1
 
-    # Set the values of things
-    U = 1.0
-    b = 6.0
-    kr = 1.0
-    Mach = 0.5
-    # Compute the circular frequency from the reduced frequency:
-    # kr = omega*b/U
-    omega = U*kr/b
+        # Get the aerodynamic mesh connectivity
+        aero_pts = self.X.flatten()
+        aero_conn = self.conn.flatten()
 
-    # dlm_solver.use_steady_kernel = False
-    dlm_solver.computeInfluenceMatrix(U, omega, Mach)
+        # Specify the load/displacement transfer data
+        self.transfer = TACS.LDTransfer(comm, struct_root, 
+                                        aero_root, aero_member,
+                                        aero_pts, aero_conn, 
+                                        self.tacs, max_h_size, gauss_order)
 
-    w = np.zeros(nchord*nspan, dtype=np.complex)
-    w[:] = -1j
-    Cp = np.linalg.solve(dlm_solver.Dtrans.T, w)
-    Cp_blair = [ -5.4900e-01 + 6.2682e+00j,
-                  -3.8862e+00 + 2.4495e+00j,
-                  -3.8736e+00 + 1.1745e+00j,
-                  -5.9144e-01 + 5.8092e+00j,
-                  -3.6405e+00 + 2.1530e+00j,
-                  -3.6234e+00 + 1.0281e+00j,
-                  -5.8286e-01 + 4.5474e+00j,
-                  -2.8983e+00 + 1.4663e+00j,
-                  -2.8893e+00 + 7.1186e-01j ]
+        # Set the aerodynamic surface nodes
+        self.transfer.setAeroSurfaceNodes(aero_pts)
 
-    print '   %12s %12s %12s %12s %12s'%(
-        'Re(Cp_B)', 'Im(Cp_B)', 'Re(Cp)', 'Im(Cp)', 'Rel err')
+        # Set up the matrices/pc/Krylov solver that will be required
+        # for the flutter analysis
+        self.kmat = tacs.createFEMat()
+        self.mmat = tacs.createFEMat()
 
-    for j in xrange(nchord*nspan):
-        print '%2d %12.4e %12.4e %12.4e %12.4e %12.4e'%(
-            j, Cp_blair[j].real, Cp_blair[j].imag,
-            Cp[j].real, Cp[j].imag, abs(Cp[j] - Cp_blair[j])/abs(Cp[j]))
+        # Create the preconditioner and the solver object.  Note that
+        # these settings are best for a shell-type finite-element
+        # model.
+        lev = 10000
+        fill = 10.0
+        reorder_schur = 1
+        self.pc = TACS.PcScMat(self.kmat, lev, fill, reorder_schur)
 
-    print 'CL = ', np.sum(Cp)/(nchord*nspan)
-    sys.exit(0)
+        # Create the GMRES object 
+        gmres_iters = 10
+        nrestart = 0
+        isflexible = 0
+        self.gmres = TACS.GMRES(self.kmat, self.pc, 
+                                gmres_iters, nrestart, isflexible)
 
-elif 'rodden' in sys.argv:
-    # Set up an aspect-ratio 20 wing
-    nchord = 10
-    nspan = 40
+        return
 
-    # The wing aspect ratio
-    Ar = 20.0
+    def velocitySweep(self, rho, Mach, U, nmodes,
+                      sigma=0.1):
+        
+        # First, set up an eigenvalue solver
+        maxeigvecs = 40
+        eigtol = 1e-14
 
-    # Set the geometry
-    b = 10.0
-    semi_span = 0.5*b
-    chord = b/Ar
+        # Set the load case number
+        load_case = 0
+        freq = TACS.TACSFrequencyAnalysis(self.tacs, load_case, sigma,
+                                          self.kmat, self.mmat, self.gmres, 
+                                          maxeigvecs, nmodes, eigtol)
+        print_obj = TACS.KSMPrintStdout('Freq', 
+                                        self.tacs.getMPIComm().rank, 1)
+        freq.solve()
 
-    # Compute the area of the rectangular wing
-    Area = semi_span*chord
+        # Extract the eignvectors and eigenvalues
+        vec = self.tacs.createVec()
 
-    # Set other geometric parameters
-    taper = 1.0
-    sweep = 0.0
-    dihedral = 0.0
-    dlm_solver.addMeshSegment(nspan, nchord, semi_span, chord,
-                              sweep=sweep, dihedral=dihedral, 
-                              taper_ratio=taper)
-    Mach = 0.0
-    U = 1.0
+        # Get the surface modes and the corresponding normal wash
+        modes = np.zeros((3*self.nnodes, nmodes))
+        vwash = np.zeros((self.npanels, nmodes))
+        dwash = np.zeros((self.npanels, nmodes))
 
-    # Set the downwash over the wing
-    npanels = dlm_solver.npanels
-    w = np.zeros(npanels, dtype=np.complex)
+        # Store the natural frequencies of vibration
+        omega = np.zeros(nmodes)
 
-    # Set space for the frequencies
-    nfreq = 25
-    kr = np.linspace(0.0, 2, nfreq)
-    Cl = np.zeros(nfreq, dtype=np.complex)
-    Clalpha = np.zeros(nfreq, dtype=np.complex)
+        # Extract the natural frequencies of vibration
+        for k in xrange(nmodes):
+            # Extract the eigenvector
+            eigval, error = freq.extractEigenvector(k, vec)
+            omega[k] = np.sqrt(eigval)
 
-    # Set the angle of attack to use
-    aoa = 0.5/180.0*np.pi
+            # Transfer the eigenvector to the aerodynamic surface
+            disp = np.zeros(3*self.nnodes)
+            self.transfer.setDisplacements(vec)    
+            self.transfer.getDisplacements(disp)
 
-    for k in xrange(nfreq):
-        # kr = omega*b/U
-        omega = kr[k]*U/(0.5*chord)
-
-        # Compute the downwash
-        for i in xrange(npanels):
-            # Compute the contribution to the boundary condition:
-            # -1/U*(dh/dt + U*dh/dx), where h = (x - 0.25c)*e^{j*omega*t}
-            w[i] = -1.0 - 1j*(omega/U)*(dlm_solver.Xr[i, 0] - 0.25*chord)
-            
-        # Solve the resulting system
-        dlm_solver.computeInfluenceMatrix(U, omega, Mach)
-        Cp = np.linalg.solve(dlm_solver.Dtrans.T, w)
-
-        # Compute the coefficient of pressure
-        Cl[k] = np.sum(Cp)/(nchord*nspan)
-        Clalpha[k] = Cl[k]
-
-        print '%3d %12.5e %12.5e %12.5e %12.5e %12.5e'%(
-            k, kr[k], Cl[k].real, Cl[k].imag, Clalpha[k].real, Clalpha[k].imag)
-
-    plt.figure()
-    plt.plot(kr, Cl.imag, '-ko', label='Cl imaginary')
-    plt.plot(kr, Cl.real, '-ro', label='Cl real')
-    plt.legend()
-    plt.grid()
-    plt.show()
-    sys.exit(0)                     
-
-# Dimensions of the mesh
-nspan = 20
-nchord = 12
-
-# Geometric parameters
-semi_span = 1
-chord = 0.3
-taper = 1.0
-dihedral = 0.0
-
-sweep = 0.0
-if 'swept' in sys.argv:
-    sweep = np.arctan(0.6) 
-
-dlm_solver.addMeshSegment(nspan, nchord, semi_span, chord,
-                          sweep=sweep, dihedral=dihedral, 
-                          taper_ratio=taper)
-
-# Set the material properties for the shell
-rho = 2800.0
-E = 70e9
-nu = 0.3
-kcorr = 0.8333
-ys = 400e6
-t = 0.001
-
-# Set the size of the mesh (nx, ny) finite-elements
-nx = 12
-ny = 40
-
-# Set the dimensions for the wing mesh
-Lx = 0.21
-Ly = 0.85
-
-# Compute the chord offset
-x_off = 0.5*(chord - Lx) - 0.25*chord
-
-# Finally, now we can start to assemble TACS
-comm = MPI.COMM_WORLD
-num_nodes = (nx+1)*(ny+1)
-num_elements = nx*ny
-csr_size = 4*num_elements
-num_load_cases = 1
-
-# There are 6 degrees of freedom per node
-vars_per_node = 6
-
-# Create the TACS assembler object
-tacs = TACS.TACSAssembler(comm, num_nodes, vars_per_node,
-                          num_elements, num_nodes,
-                          csr_size, num_load_cases)
-
-# Since we're doing everything ourselves, we have to add nodes
-# elements and finalize the mesh. This is a serial case, therefore
-# global and local node numbers are the same (or they could be some
-# other unique mapping)
-for i in xrange(num_nodes):
-    tacs.addNode(i, i)
-
-# Create the shell element class 
-stiff = constitutive.isoFSDTStiffness(rho, E, nu, kcorr, ys, t)
-stiff.setRefAxis([0.0, 1.0, 0.0])
-shell_element = elements.MITCShell2(stiff)
-
-# Add all the elements
-for j in xrange(ny):
-    for i in xrange(nx):
-        elem_conn = np.array([i + (nx+1)*j, i+1 + (nx+1)*j,
-                              i + (nx+1)*(j+1), i+1 + (nx+1)*(j+1)], dtype=np.intc)
-        tacs.addElement(shell_element, elem_conn)
-
-# Finalize the mesh
-tacs.finalize()
-
-# Set the boundary conditions and nodal locations
-bcs = np.arange(vars_per_node, dtype=np.intc)
-Xpts = np.zeros(3*num_nodes)
-
-for j in xrange(ny+1):
-    for i in xrange(nx+1):
-        node = i + (nx+1)*j
-
-        y = Ly*(1.0*j/ny)
-        x = x_off + Lx*(1.0*i/nx) + np.tan(sweep)*y
-
-        Xpts[3*node] = x
-        Xpts[3*node+1] = y
-
-        if j == 0:
-            tacs.addBC(node, bcs)
-
-tacs.setNodes(Xpts)
-
-# Now, set up the load and displacement transfer object
-struct_root = 0
-aero_root = 0
-aero_member = 1
-
-# Get the aerodynamic mesh connectivity
-aero_pts = dlm_solver.X.flatten()
-aero_conn = dlm_solver.conn.flatten()
-
-# Specify the load/displacement transfer data
-max_h_size = 0.5
-gauss_order = 2
-transfer = TACS.LDTransfer(comm, struct_root, aero_root, aero_member,
-                           aero_pts, aero_conn, tacs, max_h_size, gauss_order)
-
-# Set the aerodynamic surface nodes
-transfer.setAeroSurfaceNodes(aero_pts)
-
-# Set up the frequency analysis object
-sigma = 0.1
-
-mat = tacs.createFEMat()
-mmat = tacs.createFEMat()
-
-# Create the preconditioner and the solver object
-lev = 10000
-fill = 10.0
-reorder_schur = 1
-pc = TACS.PcScMat(mat, lev, fill, reorder_schur)
-
-# Create the GMRES object 
-gmres_iters = 30
-nrestart = 0
-isflexible = 0
-gmres = TACS.GMRES(mat, pc, gmres_iters, nrestart, isflexible)
-
-# Set up the solver object
-maxeigvecs = 40
-neigvals = 5
-eigtol = 1e-16
-
-# Set the load case number
-load_case = 0
-freq = TACS.TACSFrequencyAnalysis(tacs, load_case, sigma,
-                                  mat, mmat, gmres, 
-                                  maxeigvecs, neigvals, eigtol)
-freq.solve(TACS.KSMPrintStdout('Freq', comm.rank, 1))
-
-# Extract the eignvectors and eigenvalues
-vec = tacs.createVec()
-
-# Store information related to the surface modes
-nnodes = dlm_solver.nnodes
-npanels = dlm_solver.npanels
-
-# Get the surface modes and the corresponding normal wash
-modes = np.zeros((3*nnodes, neigvals))
-vwash = np.zeros((npanels, neigvals))
-dwash = np.zeros((npanels, neigvals))
-
-# Store the natural frequencies of vibration
-omega = np.zeros(neigvals)
-
-for k in xrange(neigvals):
-    # Extract the eigenvector
-    eigval, error = freq.extractEigenvector(k, vec)
-    omega[k] = np.sqrt(eigval)
-
-    # Transfer the eigenvector to the aerodynamic surface
-    disp = np.zeros(3*dlm_solver.nnodes)
-    transfer.setDisplacements(vec)    
-    transfer.getDisplacements(disp)
-
-    # Compute the normal wash on the aerodynamic mesh
-    npts = dlm_solver.nnodes
-    vk, dk = dlm_solver.getModeBCs(disp.reshape(nnodes, 3))
+            # Compute the normal wash on the aerodynamic mesh
+            vk, dk = self.getModeBCs(disp.reshape(self.nnodes, 3))
     
-    # Store the normal wash and the surface displacement
-    vwash[:,k] = vk
-    dwash[:,k] = dk
-    modes[:,k] = disp
+            # Store the normal wash and the surface displacement
+            vwash[:,k] = vk
+            dwash[:,k] = dk
+            modes[:,k] = disp
 
-print 'omega = ', omega
+        # Allocate the eigenvalue at all iterations
+        nvals = len(U)
+        pvals = np.zeros((nmodes, nvals), dtype=np.complex)
 
-# Set the flight conditions
-Mach = 0.0
-rho = 1.225
-
-# Set up the number of values
-nvals = 25
-U = np.linspace(2, 20, nvals)
-pvals = np.zeros((neigvals, nvals), dtype=np.complex)
-omega_aero = np.zeros(nvals)
-damping = np.zeros(nvals)
-
-for keig in xrange(neigvals):
-    for i in xrange(nvals):
-        qinf = 0.5*rho*U[i]**2
+        # Now, evalue the flutter determinant at all iterations
+        for kmode in xrange(nmodes):
+            for i in xrange(nvals):
+                qinf = 0.5*rho*U[i]**2
     
-        # Compute an estimate of p based on the lowest natural frequency
-        if i == 0:
-            eps = 1e-3
-            p1 = -0.1 + 1j*omega[keig]
-            p2 = p1 + (eps + 1j*eps)
-        elif i == 1:
-            eps = 1e-3
-            p1 = 1.0*pvals[keig,0]
-            p2 = p1 + (eps + 1j*eps)
+                # Compute an estimate of p based on the lowest natural
+                # frequency
+                if i == 0:
+                    eps = 1e-3
+                    p1 = -0.1 + 1j*omega[kmode]
+                    p2 = p1 + (eps + 1j*eps)
+                elif i == 1:
+                    eps = 1e-3
+                    p1 = 1.0*pvals[kmode,0]
+                    p2 = p1 + (eps + 1j*eps)
 
-        # The following code tries to extrapolate the next point
-        elif i == 2:
-            eps = 1e-3
-            p1 = 2.0*pvals[keig,i-1] - pvals[keig,i-2]
-            p2 = p1 + (eps + 1j*eps)
-        else: 
-            eps = 1e-3
-            p1 = 3.0*pvals[keig,i-1] - 3.0*pvals[keig,i-2] + pvals[keig,i-3]
-            p2 = p1 + (eps + 1j*eps)
+                # The following code tries to extrapolate the next
+                # point
+                elif i == 2:
+                    eps = 1e-3
+                    p1 = 2.0*pvals[kmode,i-1] - pvals[kmode,i-2]
+                    p2 = p1 + (eps + 1j*eps)
+                else: 
+                    eps = 1e-3
+                    p1 = 3.0*pvals[kmode,i-1] - 3.0*pvals[kmode,i-2] + pvals[kmode,i-3]
+                    p2 = p1 + (eps + 1j*eps)
 
-        det1 = dlm_solver.computeFlutterDeterminant(U[i], p1, qinf, Mach,
-                                                    neigvals, omega, vwash, dwash, modes)
-        det2 = dlm_solver.computeFlutterDeterminant(U[i], p2, qinf, Mach,
-                                                    neigvals, omega, vwash, dwash, modes)
+                # Compute the flutter determinant
+                det1 = self.computeFlutterDeterminant(U[i], p1, qinf, Mach,
+                                                      nmodes, omega, 
+                                                      vwash, dwash, modes)
+                det2 = self.computeFlutterDeterminant(U[i], p2, qinf, Mach,
+                                                      nmodes, omega, 
+                                                      vwash, dwash, modes)
 
-        # Perform the flutter determinant iteration
-        max_iters = 50
-        det0 = 1.0*det1
-        for k in xrange(max_iters):
-            # Compute the new value of p
-            pnew = (p2*det1 - p1*det2)/(det1 - det2)
+                # Perform the flutter determinant iteration
+                max_iters = 50
+                det0 = 1.0*det1
+                for k in xrange(max_iters):
+                    # Compute the new value of p
+                    pnew = (p2*det1 - p1*det2)/(det1 - det2)
 
-            # Move p2 to p1
-            p1 = 1.0*p2
-            det1 = 1.0*det2
+                    # Move p2 to p1
+                    p1 = 1.0*p2
+                    det1 = 1.0*det2
 
-            # Move pnew to p2 and compute pnew
-            p2 = 1.0*pnew
-            det2 = dlm_solver.computeFlutterDeterminant(U[i], p2, qinf, Mach,
-                                                        neigvals, omega, vwash, dwash, modes)
-            if k == 0:
-                print '%4s %10s %10s %10s'%('Iter', 'Det', 'Re(p)', 'Im(p)') 
-            print '%4d %10.2e %10.6f %10.6f'%(k, abs(det2), p2.real, p2.imag)
+                    # Move pnew to p2 and compute pnew
+                    p2 = 1.0*pnew
+                    det2 = self.computeFlutterDeterminant(U[i], p2, qinf, Mach,
+                                                          nmodes, omega, 
+                                                          vwash, dwash, modes)
+                    
+                    # Print out the iteration history for impaitent people
+                    if k == 0:
+                        print '%4s %10s %10s %10s'%(
+                            'Iter', 'Det', 'Re(p)', 'Im(p)') 
+                    print '%4d %10.2e %10.6f %10.6f'%(
+                        k, abs(det2), p2.real, p2.imag)
 
-            if abs(det2) < 1e-6*abs(det0):
-                break
+                    if abs(det2) < 1e-6*abs(det0):
+                        break
 
-        # Store the final value of p
-        pvals[keig, i] = p2
+                # Store the final value of p
+                pvals[kmode, i] = p2
 
-        print '%4s %10s %10s %10s'%('Iter', 'U', 'Re(p)', 'Im(p)')
-        print '%4d %10.6f %10.6f %10.6f'%(i, U[i], pvals[keig,i].real, pvals[keig,i].imag)
+            print '%4s %10s %10s %10s'%(
+                'Iter', 'U', 'Re(p)', 'Im(p)')
+            print '%4d %10.6f %10.6f %10.6f'%(
+                i, U[i], pvals[kmode,i].real, pvals[kmode,i].imag)
 
-symbols = ['-ko', '-ro', '-go', '-bo', '-mo']
-plt.figure()
-for keig in xrange(neigvals):
-    plt.plot(U, pvals[keig,:].imag, symbols[keig], label='mode %d'%(keig))
-plt.legend()
-plt.grid()
-
-plt.figure()
-for keig in xrange(neigvals):
-    plt.plot(U, pvals[keig,:].real, symbols[keig], label='mode %d'%(keig))
-plt.legend()
-plt.grid()
-plt.show()
+        # Return the final values
+        return pvals
 
