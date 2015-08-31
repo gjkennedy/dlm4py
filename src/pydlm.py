@@ -88,14 +88,14 @@ class DLM:
             self.conn = conn
         else:
             # Append the new mesh locations
-            self.Xi = np.vstack(self.Xi, Xi)
-            self.Xo = np.vstack(self.Xo, Xo)
-            self.Xr = np.vstack(self.Xr, Xr)
-            self.dXav = np.vstack(self.dXav, dXav)
+            self.Xi = np.vstack((self.Xi, Xi))
+            self.Xo = np.vstack((self.Xo, Xo))
+            self.Xr = np.vstack((self.Xr, Xr))
+            self.dXav = np.hstack((self.dXav, dXav))
 
             # Append the new connectivity and nodes
-            self.X = np.vstack(self.X, X)
-            self.conn = np.vstack(self.conn, conn + self.nnodes)
+            self.X = np.vstack((self.X, X))
+            self.conn = np.vstack((self.conn, conn + self.nnodes))
 
         # Set the new number of nodes/panels
         self.npanels = self.Xi.shape[0]
@@ -202,8 +202,9 @@ class DLM:
             # Evaluate the right-hand-side
             w = np.zeros(self.npanels, dtype=np.complex)
             
-            # Compute a right hand side
-            dlm.computeperiodicbc(w, aoa, omega, self.Xi.T, self.Xo.T)
+            # Compute the normalized downwash
+            for i in xrange(self.npanels):
+                w[i] = -1.0 - 1j*(omega/U)*self.Xr[i, 0]
 
         Cp = np.linalg.solve(self.Dtrans.T, w)
 
