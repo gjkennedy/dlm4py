@@ -270,10 +270,6 @@ follows:
   = \sum_{j=1}^{n} \f{a_{j}e^{-(p_{j} + i k_{1})u_{1}}((p_{j} + i k_1)u_{1} + 1)(p_{j} - ik_{1})^2}{(p_{j}^2 + k_{1}^2)^2}
 \end{equation*}
 
-\section{Integration of the approximate kernel function}
-
-
-
 \section{Steady-state horseshoe vortex code}
 
 The steady state components are calculated based on a horseshoe vortex
@@ -337,7 +333,7 @@ inboard vortex segment:
 %
 \begin{equation*}
   \begin{aligned}
-    \mb{v}_{i} & = \lim_{C \rightarrow \infty} \f{\Gamma}{4\pi} \f{\mb{c} \times \mb{a}(A + C)}{AC(AC + \mb{c}\cdot \mb{a})} \\
+    \mb{v} & = \lim_{C \rightarrow \infty} \f{\Gamma}{4\pi} \f{\mb{c} \times \mb{a}(A + C)}{AC(AC + \mb{c}\cdot \mb{a})} \\
     & = \f{\Gamma}{4\pi} \f{-\mb{i} \times \mb{a}}{A(A - \mb{i}\cdot \mb{a})} \\
     & = \f{\Gamma}{4\pi} \f{\mb{a} \times \mb{i}}{A(A - \mb{i}\cdot \mb{a})} \\
     & = \f{\Gamma}{4\pi} \f{a_{z} \mb{j} - a_{y}\mb{k}}{A(A - a_x)}
@@ -356,7 +352,443 @@ the outboard point yields the following:
 Where we have used the fact that $\lim_{D \rightarrow \infty} \mb{d}/D
 = -\mb{i}$.
 
+\section{Flutter analysis}
 
+Within the context of this work, we use a flutter analysis that takes
+the following form:
+\begin{equation}
+  \label{eqn:flutter}
+  \left[ p^2 \mb{M}(\mb{x}) + \mb{K}(\mb{x}) - q_{\infty} \mb{A}(p) \right] \mb{u} = 0
+\end{equation}
+%
+where $\mb{M}(\mb{x})$ and $\mb{K}(\mb{x})$ are the mass and stiffness
+matrices from the finite-element equations, which are functions of the
+design variables $\mb{x}$. Furthermore, $q_{\infty}$ is the dynamic
+pressure and $\mb{A}(p) = \mb{T}^{T} \mb{A}_{\text{IC}}(p) \mb{T}$,
+where $\mb{A}_{\text{IC}}$ is the aerodynamic influence coefficient
+matrix, and $\mb{T}$ is the load and displacement transfer
+interpolation matrix. The eigenvalue $p$ gives the frequency and
+damping of the motion. 
+
+The DLM method presented above only uses the imaginary component of
+the eigenvalue, $\Im \{ p \}$, which is the frequency of the
+oscillation.  In this section, we will present two methods that are
+used to compute approximate solutions of the flutter
+equation~\eqref{eqn:flutter}.  Note that the influence coefficient
+matrix is complex and is a nonlinear function of $p$. Therefore, the
+flutter equation~\eqref{eqn:flutter} is a generalized nonlinear
+eigenvalue problem with a solution given by the triplet $(p,
+\mb{v}, \mb{u})$, where $p$ is the complex eigenvalue and
+$\mb{v}$ and $\mb{u}$ are the left and right eigenvectors,
+respectively.  The triplet satisfies the following equations:
+%
+\begin{equation*}
+  \begin{aligned}
+    \left[ p^2 \mb{M}(\mb{x}) + \mb{K}(\mb{x}) - q_{\infty} \mb{A}(p) \right] \mb{u} & = 0 \\
+    \mb{v}^{H} \left[ p^2 \mb{M}(\mb{x}) + \mb{K}(\mb{x}) - q_{\infty} \mb{A}(p) \right] & = 0 
+  \end{aligned}
+\end{equation*}
+
+\subsection{Exact flutter derivatives}
+
+The exact derivative of the eigenvalue, $p$, with respect to the
+design variables can be obtained by differentiating the governing
+equation of flutter~\eqref{eqn:flutter} with respect to the design
+variables. For the $k$-th design variable, $x_{k}$, this yields the
+following expression:
+%
+\begin{equation*}
+  \begin{aligned}
+    \left[ 2p \mb{M}(\mb{x}) - q_{\infty} \f{\p \mb{A}}{\p p} \right] \mb{u} \f{\p p}{\p x_{k}} + & \\ 
+    \left[ p^2 \f{\p \mb{M}}{\p x_{k}} + \f{\p \mb{K}}{\p x_{k}} - q_{\infty} \f{\p \mb{A}(p)}{\p x_{k}} \right] \mb{u} + & \\
+    \left[ p^2 \mb{M}(\mb{x}) + \mb{K}(\mb{x}) - q_{\infty} \mb{A}(p) \right] \f{\p \mb{u}}{\p x_{k}} & = 0.
+  \end{aligned}
+\end{equation*}
+Within this work, we fix the aerodynamic mesh and use only structural
+variables, therefore $\p \mb{A}/\p x_{k} = 0$.  Pre-multiplying by the
+conjugate transpose of the left eigenvector eliminates the term with
+right eigenvector derivatives, and the eigenvalue derivative can be
+written as follows:
+%
+\begin{equation*}
+  \f{\mathrm{d} p}{\mathrm{d} x_{k}} = 
+  - \f{\ds{\mb{v}^{H} \left[ p^2 \f{\p \mb{M}}{\p x_{k}} + \f{\p \mb{K}}{\p x_{k}} \right] \mb{u}}}{
+    \ds{ \mb{v}^{H} \left[ 2p \mb{M} - q_{\infty} \f{\p \mb{A}}{\p p} \right] \mb{u}}}.
+\end{equation*}
+Unfortunately, this derivative can be difficult to evaluate since the
+exact left and right eigenvectors are not obtained as a byproduct of
+the solution procedure.
+
+Instead of using the full eigenvalue problem~\eqref{eqn:flutter},
+flutter analysis techniques often employ a reduced eigenproblem using
+a small number of natural frequencies. The reduced modes are the
+eigenvectors of the problem:
+%
+\begin{equation*}
+  \left[ \mb{K}(\mb{x}) - \omega_{i}^2 \mb{M}(\mb{x}) \right] \mb{u} = 0,
+\end{equation*}
+where $\omega_{i}$ is the natural frequency. The eigenvectors
+$\mb{u}$ for $i = 1, \ldots, r$ are collected in the matrix
+$\mb{Q}_{r}$. These eigenvectors are $\mb{M}$-orthonormal, such that
+$\mb{Q}_{r}^{T} \mb{M} \mb{Q}_{r} = \mb{I}_{r}$. The reduced
+eigenproblem can now be written as follows:
+%
+\begin{equation*}
+  \label{eqn:flutter-reduced}
+  \left[ \tilde{p}^2 \mb{M}_{r} + \mb{K}_{r} - q_{\infty} \mb{A}_{r}(\tilde{p}) \right] \mb{u}_{r} = 0,
+\end{equation*}
+with the solution $(\tilde{p}, \mb{u}_{r}, \mb{v}_{r})$. The reduced
+matrices take the form:
+%
+\begin{equation*}
+  \begin{aligned}
+    \mb{M}_{r} & = \mb{Q}_{r}^{T} \mb{M} \mb{Q}_{r} = \mb{I}_{r} \in \mathbb{R}^{r \times r}, \\ 
+    \mb{K}_{r} & = \mb{Q}_{r}^{T} \mb{K} \mb{Q}_{r} = \text{diag}\{\omega_{i}^2\} \in \mathbb{R}^{r \times r}, \qquad \\ 
+    \mb{A}_{r}(p) & = \mb{Q}_{r}^{T} \mb{A}(p) \mb{Q}_{r} \in \mathbb{C}^{r \times r}.
+  \end{aligned}
+\end{equation*}
+Note that $\mb{A}_{r}$ has no sparsity structure and is a dense matrix
+in general.
+
+The so-called frozen-mode approximation is to approximate the
+derivatives of the eigenvalues using the formula
+\begin{equation*}
+  \f{\mathrm{d} p}{\mathrm{d} x_{k}} \approx
+  - \f{\ds{\mb{v}_{r}^{H} \left[ \tilde{p}^2 \f{\p \mb{M}_{r}}{\p x_{k}} + 
+        \f{\p \mb{K}_{r}}{\p x_{k}} \right] \mb{u}_{r}}}{
+    \ds{ \mb{v}_{r}^{H} \left[ 2\tilde{p} \mb{M} - q_{\infty} \f{\p \mb{A}_{r}}{\p \tilde{p}} \right] \mb{u}_{r}}}.
+\end{equation*}
+where the derivatives of the reduced matrices are approximated as follows:
+\begin{equation*}
+  \begin{aligned}
+    \f{\p \mb{M}_{r}}{\p x_{k}} \approx \mb{Q}_{r}^{T} \f{\p \mb{M}}{\p x_{k}} \mb{Q}_{r} \\
+    \f{\p \mb{K}_{r}}{\p x_{k}} \approx \mb{Q}_{r}^{T} \f{\p \mb{K}}{\p x_{k}} \mb{Q}_{r}
+   \end{aligned}
+\end{equation*}
+%
+The frozen-mode approximation can be interpreted in two equivalent
+ways: (1) that the derivative of the modes or eigenvectors,
+$\mb{Q}_{r}$, with respect to the design variables is zero, or (2)
+that the left and right eigenvectors of the full problem are
+well-approximated by
+%
+\begin{equation*}
+  \mb{u} = \mb{Q} \mb{u}_{r}, \qquad
+  \mb{v} = \mb{Q} \mb{v}_{r}.
+\end{equation*}
+Using the second interpretation, note that there is no bound on the
+error between $(p, \mb{u}, \mb{v})$ and $(\tilde{p}, \mb{Q}_{r}
+\mb{u}_{r}, \mb{Q}_{r} \mb{v}_{r})$. Furthermore, even if $p -
+\tilde{p}$ is small, there is no guarantee that $\mb{Q}_{r}
+\mb{u}_{r}$ is then close to $\mb{u}$, or equivalently with the left
+eigenvector.
+
+\subsection{Solution methods for eigenvalue problems}
+
+In this work, we will make use of two types of generalized eigenvalue
+solution algorithms: a shifted Lanczos method, and a Jacobi--Davidson
+method. Both are briefly described in the following section.
+
+\subsubsection{Lanczos method}
+
+The Lanczos algorithm extracts eigenvalues for symmetric generalized
+eigenvalue problems. Here, we use this algorithm to solve for the
+natural frequencies of the structural problem without aerodynamic loads:
+%
+\begin{equation*}
+  \mb{K} \mb{u} = \lambda \mb{M} \mb{u}.
+\end{equation*}
+%
+Instead of solving this problem directly, we use a shift and invert
+strategy to zero-in on the desired spectrum to reduce the number of
+iterations required. This shift and invert technique produces the
+following eigenproblem that has the same eigenvectors but different
+eigenvalues:
+%
+\begin{equation*}
+  \mb{M}(\mb{K} - \sigma \mb{M})^{-1}\mb{M} \mb{u} = \mu \mb{M} \mb{u},
+\end{equation*}
+where the transformed eigenvalue $\mu$ is related to the original eigenvalue
+$\lambda$ through the relationship:
+%
+\begin{equation*}
+  \mu = \f{1}{\lambda - \sigma}.
+\end{equation*}
+When $\sigma$ is chosen such that it lies close to the desired
+$\lambda$, the corresponding transformed eigenvalues, $\mu$, become
+well separated, making the Lanczos algorithm more efficient.
+
+The Lanczos algorithm uses an $\mb{M}$-orthonormal subspace, written
+as $\mb{V}_{m} \in \mathbb{R}^{n \times m}$, such that $\mb{V}_{m}^{T}
+\mb{M} \mb{V}_{m} = \mb{I}_{m}$. In exact arithmetic, this subspace
+can be formed directly from the Lanczos three-term
+recurrence. However, the resulting subspace loses orthogonality as the
+algorithm converges to an eigenvalue due to numerical truncation
+errors.  Instead, we use an expensive, but effective,
+full-orthonormalization procedure (Gram--Schmidt) that enforces
+$\mb{M}$-orthonormality.
+
+~\newline
+\rule{\textwidth}{1pt}
+%
+\begin{algorithmic}
+  \State{\it Lanczos method for computing 
+    eigenvalues/eigenvectors of $\mb{K} \mb{u} = \lambda \mb{M} \mb{u}$}
+  \State{\it Given: $m$, $\hat{\mb{v}}_{1}$, $\sigma$, $\epsilon_{tol}$}
+  \State{Factor the matrix $(\mb{K} - \sigma \mb{M})$}
+  \State{Set $i = 1$}
+  \While{$i \le m$}
+  \State{$\hat{\mb{v}}_{i+1} = (\mb{K} - \sigma \mb{M})^{-1}\mb{M} \mb{v}_{i}$}
+  \State{Set $j = 1$}
+  %
+  \While{$j \le i$}
+  \Comment{Full $\mb{M}$-orthonormalization}
+  \State{$h_{ji} = \mb{v}_{j}^{T} \mb{M} \hat{\mb{v}}_{i+1}$}
+  \State{$\hat{\mb{v}}_{i+1} \leftarrow \hat{\mb{v}}_{i+1} - h_{ji} \mb{v}_{j}$}
+  \State{$j \leftarrow j + 1$}
+  \EndWhile
+  %
+  \State{$\alpha_{i} \leftarrow h_{ii}$}
+  \State{$\beta_{i} = \hat{\mb{v}}_{i+1}^{T} \mb{M} \hat{\mb{v}}_{i+1}$}
+  \State{$\mb{v}_{i+1} = \hat{\mb{v}}_{i+1}/\beta_{i}$}
+  %
+  \State{$\mb{T}_{i} = \text{tridiag}_{k}\{\beta_{k}, \alpha_{k}, \beta_{k-1}\}$}
+  \Comment{Solve the reduced eigenproblem}
+  \State{Solve $\mb{T}_{i} \mb{y}_{i} = \theta \mb{y}_{i}$ for $(\theta, \mb{y}_{i})$}
+  %
+  \If{$\beta_{i} \mb{y}_{i}^{T} \mb{e}_{i} < \epsilon_{tol}$}
+  \Comment{Test for convergence}
+  \State{$\mb{u} = \mb{V}_{i} \mb{y}_{i}$}
+  \State{$\lambda = \f{1}{\theta} + \sigma$}
+  \State{\bf break}
+  \EndIf
+  %
+  \State{$i \leftarrow i + 1$}
+  \EndWhile
+\end{algorithmic}
+\rule{\textwidth}{1pt}
+
+The Lanczos method can be easily extended to find multiple eigenpairs
+$(\lambda_{i}, \mb{u})$. A byproduct of the Lanczos method is the
+$\mb{M}$-orthonormal subspace. Instead of discarding this subspace, we
+use these vectors to enhance the flutter prediction and eigenvector
+computation.
+
+\subsubsection{Jacobi--Davidson method}
+
+The Lanczos method, and their Arnoldi cousins, are best-suited for
+regular eigenvalue problems, or generalized eigenproblems that can be
+transformed into regular eigenproblems as we did above. An alternative
+class of eigenvalue algorithm is the Jacobi--Davidson (JD) method that
+can be adapted for general nonlinear eigenproblems. JD methods, like
+Lanczos methods, build an orthonormal subspace using a series of
+vectors which are used to approximate the eigenvector. However, these
+vectors are built, not from a Krylov subspace, but instead from the
+corrections obtained from inexact Newton method. We briefly outline
+these methods below and describe an algorithm that builds from an
+$\mb{M}$-orthonormal subspace.
+
+If we think of the eigenproblem as a system of nonlinear equations,
+with the normalization constraint appended, we arrive at the following
+system of equations:
+%
+\begin{equation*}
+  \begin{aligned}
+    \mb{F}(p)\mb{u} = 
+    \left[ p^{2} \mb{M} + \mb{K} - q_{\infty} \mb{A}(p) \right] \mb{u} & = 0, \\
+    \mb{u}^{H} \mb{M} \mb{u} & = 1.
+  \end{aligned}
+\end{equation*}
+Note that we have defined $\mb{F}(p)$ and we have used the Hermitian
+transpose since $\mb{u} \in \mathbb{C}^{n}$. Using Newton's method
+to find an update, $\mb{t}$ for the eigenvector and $\Delta p$ for
+the eigenvalue produces the following system of equations:
+%
+\begin{equation*}
+  \begin{bmatrix} 
+    \mb{F}(p) & \mb{F}'(p)\mb{u} \\
+    \mb{u}^{H}\mb{M} & 0  \\
+  \end{bmatrix}
+  \begin{bmatrix}
+    \mb{t} \\
+    \Delta p
+  \end{bmatrix}
+  = -
+  \begin{bmatrix}
+    \mb{F}(p)\mb{u} \\
+    0
+  \end{bmatrix}.
+\end{equation*}
+Note that the second equation implies that the update $\mb{t}$ will be
+$\mb{M}$-orthogonal such that $\mb{t} \perp \mb{M} \mb{u}$.  The
+approximation $\mb{u}$ is constructed from the $\mb{M}$-orthonormal
+basis, $\mb{V}_{m}$, as follows:
+%
+\begin{equation*}
+  \mb{u} = \mb{V}_{m} \mb{y}_{m}.
+\end{equation*}
+The coefficients $\mb{y}_{m}$ can be obtained by solving the nonlinear
+eigenproblem:
+%
+\begin{equation*}
+  \mb{V}_{m}^{H} \mb{F}(p) \mb{V}_{m} \mb{y}_{m} = 0,
+\end{equation*}
+which is a reduced eigenvalue problem. When $\mb{u}$ is in the
+subspace, $\mb{u} = \mb{V}_{m} \mb{y}_{m}$, the Newton system can be
+written in the following form:
+%
+\begin{equation*}
+  \begin{aligned}
+    \left(\mb{I} - \f{\mb{w}\mb{u}^{H}}{\mb{w}^{H}\mb{u}} \right)
+    \mb{F}(p) \left(\mb{I} - \f{\mb{s}\mb{s}^{H}}{\mb{s}^{H} \mb{s}} \right) \mb{t} & =
+    - \left(\mb{I} - \f{\mb{w}\mb{u}^{H}}{\mb{w}^{H}\mb{u}} \right) (\mb{F}(p)\mb{u} + \mb{w}) \\
+    & = - \mb{F}(p)\mb{u}
+  \end{aligned}
+\end{equation*}
+where $\mb{w} = \mb{F}'(p) \mb{u}$ and $\mb{s} = \mb{M} \mb{u}$.
+
+~\newline
+\rule{\textwidth}{1pt}
+%
+\begin{algorithmic}
+  \State{\it Jacobi--Davidson method for compute
+    eigenvalues/eigenvectors of $\mb{F}(p) \mb{u} = 0$} 
+  \State{Given an initial $i$, $\mb{V}_{i}$, and $m$}
+  \While{$i \le m$}
+  %
+  \State{Solve $\mb{V}_{i}^{H} \mb{F}(p)\mb{V}_{i} \mb{y}_{i} = 0$}
+  \State{Compute $\mb{u} = \mb{V}_{i}\mb{y}_{i}$}
+  \If{$||\mb{F}(p) \mb{u}|| \le \epsilon_{tol}$}
+  \State{\bf break}
+  \EndIf
+  %
+  \State{Compute $\mb{w} = \mb{F}'(p) \mb{u}$, and $\mb{s} = \mb{M} \mb{u}$}
+  \State{Approximately solve: 
+    \begin{equation*}
+      \left(\mb{I} - \f{\mb{w}\mb{u}^{H}}{\mb{w}^{H}\mb{u}} \right)
+      \mb{F}(p) \left(\mb{I} - \f{\mb{s}\mb{s}^{H}}{\mb{s}^{H} \mb{s}} \right) \mb{t} 
+      = - \mb{F}(p)\mb{u}
+    \end{equation*}}
+  %
+  \While{$j \le i$}
+  \Comment{Full $\mb{M}$-orthonormalization}
+  \State{$h_{ji} = \mb{v}_{j}^{H} \mb{M} \mb{t}$}
+  \State{$\mb{t} \leftarrow \mb{t} - h_{ji} \mb{v}_{j}$}
+  \State{$j \leftarrow j + 1$}
+  \EndWhile
+  %
+  \State{$\mb{v}_{i+1} = \mb{t}/\mb{t}^{H} \mb{M} \mb{t}$}
+  %
+  \EndWhile
+\end{algorithmic}
+\rule{\textwidth}{1pt}
+
+\subsection{Flutter solution methods}
+
+In this section, we describe two flutter solution algorithms that we
+use to find solutions to reduced flutter problems. These 
+ $(p, \mb{u}, \mb{v})$ or their approximations.
+
+\subsubsection{Reduced determinant iteration}
+
+Hassig's method of determinant iteration can be used to solve the
+reduced nonlinear eigenvalue problem. This method is a secant method
+applied to the determinant equation:
+%
+\begin{equation}
+  \Delta(p) = \det \mb{Q}_{r}^{T} \mb{F}(p) \mb{Q}_{r}.
+\end{equation}
+Note that the columns of $\mb{Q}_{r} \in \mathbb{R}^{n \times r}$ are
+the eigenvectors from the natural frequency eigenproblem. Given
+initial guesses $p_{1}$, and $p_{2}$, the method computes $p_{k+2}$ as
+follows:
+%
+\begin{equation*}
+  p_{k+2} = \f{p_{k+1} \Delta(p_{k}) - p_{k} \Delta(p_{k+1})}
+  {\Delta(p_{k}) - \Delta(p_{k+1})},
+\end{equation*}
+the iteration is continued until $|\Delta(p_{k+2})| \le
+\epsilon_{tol}$ for some specified tolerance.
+
+\subsubsection{Eigenproblem expansion}
+
+Another approach that we implement is to expand the reduced
+eigenproblem, $\mb{V}_{m}^{H} \mb{F}(p) \mb{V}_{m} = 0$, in a Taylor
+series expansion around an initial guess for $p$:
+%
+\begin{equation*}
+  \begin{aligned}
+    \mb{V}_{m}^{H} \mb{F}(p + \Delta p) \mb{V}_{m} &
+    = \mb{V}_{m}^{H} \left[ \mb{F}_{0} + p \mb{F}'(p) + \f{1}{2} p^2 \mb{F}''(p) \right] \mb{V}_{m} \\
+    & = \left[ (p + \Delta p)^2 \mb{I}_{m} + \mb{V}_{m}^{H} \mb{K}\mb{V}_{m} - 
+      q_{\infty} \mb{V}_{m}^{H} \left(\mb{A}(p) + 
+      \f{\p \mb{A}}{\p p} \Delta p + 
+      \f{1}{2} \f{\p^2\mb{A}}{\p p^2} \Delta p^2 \right) \mb{V}_{m} \right] \\
+    & = \mb{A}_{0} + \Delta p \mb{B}_{0} + \Delta p^2 \mb{C}_{0}
+  \end{aligned}
+\end{equation*}
+
+This general eigenvalue problem can be solved by converting it into a
+dense general eigenvalue problem:
+%
+\begin{equation*}
+  \begin{bmatrix}
+    0 & -\mb{I} \\
+    \mb{A}_{0} & \mb{B}_{0} 
+  \end{bmatrix}
+  \begin{bmatrix}
+    \mb{u}_{r} \\ \mb{w}_{r}
+  \end{bmatrix}
+  + 
+  \Delta p 
+  \begin{bmatrix}
+    \mb{I} & 0 \\
+    0 & \mb{C}_{0}
+  \end{bmatrix} 
+  \begin{bmatrix}
+    \mb{u}_{r} \\ \mb{w}_{r}
+  \end{bmatrix}
+  = 0.
+\end{equation*}
+Note that this is a $2m \times 2m$ generalized eigenproblem that can
+be solved using LAPACK methods.
+
+\subsubsection{A hybrid Lanczos/Jacobi--Davidson flutter analysis method}
+
+Above we described both a Lanczos method and a Jacobi--Davidson method
+for constructing approximations to generalized eigenproblems using
+$\mb{M}$-orthogonal subspaces. We use a combination of these methods
+when performing flutter analysis for design optimization.  The flutter
+analysis proceeds in the following steps:
+%
+\begin{enumerate}
+\item Using the Lanczos method, form an $\mb{M}$-orthonormal basis to
+  solve for the smallest $r$ eigenvalues of the natural frequency
+  problem, $\mb{K} \mb{u} = \lambda \mb{M} \mb{u}$.
+
+\item Using the basis $\mb{V}_{m}$ obtained from the Lanczos method,
+  execute the Jacobi--Davidson method until $||\mb{F}(p)\mb{u}|| \le
+  \epsilon_{tol}$
+
+\item Using the Jacobi--Davidson method, compute the left eigenvector,
+  replacing the eigenproblem $\mb{F}(p)$, with the transposed
+  eigenproblem $\mb{F}(p)^{T}$.
+\end{enumerate}
+
+Note that using this procedure, we are able to bound the error for
+both the left and right eigenvectors.
+
+One of the advantages of using the Lanczos method is that the
+generalized eigenvalue for the natural frequency problem is symmetric
+and therefore eigenvalues, eigenvectors and the subspace $\mb{V}_{m}
+\in \mathbb{R}^{n \times m}$ are real. Furthermore, this basis will
+remain fixed, regardless of $q_{\infty}$ and can be reused at
+different points within the subspace.
+
+In the Jacobi--Davidson method, however, the subspace vectors are
+complex. While the subspace formed from subsequent iterations could be
+reused, this also expands the size of the subspace, increasing the
+computational cost of the method.
 
 
 \end{document}
