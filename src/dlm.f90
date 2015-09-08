@@ -739,3 +739,79 @@ subroutine getModeBCs(np, n, mode, X, conn, vwash, dwash)
   end do
 
 end subroutine getModeBCs
+
+subroutine triDiagEigvecs(n, d, e, Z, info)
+  ! Compute the eigenvalues and eigenvectors of the symmetric
+  ! tridiagonal system with the coefficients diag(e, d, e).  This is
+  ! essentially a wrapper for LAPACK routines.
+  !
+  ! Input:
+  ! n:    the dimension of the tridiagonal system
+  ! d:    the diagonal of the matrix
+  ! e:    the upper/lower diagonal 
+  !
+  ! Output:
+  ! d:    the eigenvalues
+  ! z:    the full set of eigenvectors
+  
+  use precision
+  implicit none
+
+  integer, intent(in) :: n
+  real(kind=dtype), intent(inout) :: d(n)
+  real(kind=dtype), intent(in) :: e(n)
+  real(kind=dtype), intent(inout) :: Z(n,n)
+  integer, intent(out) :: info
+  
+  ! Other data required for the computation
+  integer :: lwork, liwork, iwork(1+3*n+5*n**2)
+  real(kind=dtype) :: work(6+6*n+5*n**2)
+
+  ! Set the length of the work arrays
+  lwork = 1 + 3*n + 5*n**2
+  liwork = 6 + 6*n + 5*n**2
+
+  ! Call the LAPACK function
+  call dstedc('I', n, d, e, Z, n, &
+       work, lwork, iwork, liwork, info)
+
+end subroutine triDiagEigvecs
+
+subroutine allEigVecs(n, A, eigs, Zl, Zr, info)
+  ! Compute all the eigenvalues and left and right eigenvalues for a
+  ! nonsymmetric complex matrix. This is used to approximate the left
+  ! and right eigenvectors.
+  ! 
+  ! Input:
+  ! n:     the dimension of the matrix
+  ! A:     the matrix
+  !
+  ! Output:
+  ! eigs:  the eigenvalues
+  ! Zl:    the left eigenvectors
+  ! Zr:    the right eigenvectors
+  ! info:  success?
+
+
+  use precision
+  implicit none
+
+  integer, intent(in) :: n
+  complex(kind=dtype), intent(in) :: A(n,n)
+  complex(kind=dtype), intent(inout) :: eigs(n)
+  complex(kind=dtype), intent(inout) :: Zr(n,n), Zl(n,n)
+  integer, intent(out) :: info
+  
+  ! Other data required for the computation
+  integer :: lwork
+  complex(kind=dtype) :: work(4*n)
+  real(kind=dtype) :: rwork(2*n)
+
+  ! Set the length of the work arrays
+  lwork = 4*n
+
+  ! Call the LAPACK function
+  call zgeev('V', 'V', n, A, n, eigs, &
+       Zl, n, Zr, n, work, lwork, rwork, info)
+
+end subroutine allEigVecs

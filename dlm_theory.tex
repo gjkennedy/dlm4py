@@ -549,7 +549,7 @@ $\mb{M}$-orthonormality.
   \EndWhile
   %
   \State{$\alpha_{i} \leftarrow h_{ii}$}
-  \State{$\beta_{i} = \hat{\mb{v}}_{i+1}^{T} \mb{M} \hat{\mb{v}}_{i+1}$}
+  \State{$\beta_{i} = \sqrt{\hat{\mb{v}}_{i+1}^{T} \mb{M} \hat{\mb{v}}_{i+1}}$}
   \State{$\mb{v}_{i+1} = \hat{\mb{v}}_{i+1}/\beta_{i}$}
   %
   \State{$\mb{T}_{i} = \text{tridiag}_{k}\{\beta_{k}, \alpha_{k}, \beta_{k-1}\}$}
@@ -622,7 +622,7 @@ the eigenvalue produces the following system of equations:
 Note that the second equation implies that the update $\mb{t}$ will be
 $\mb{M}$-orthogonal such that $\mb{t} \perp \mb{M} \mb{u}$.  The
 approximation $\mb{u}$ is constructed from the $\mb{M}$-orthonormal
-basis, $\mb{V}_{m}$, as follows:
+subspace basis, $\mb{V}_{m}$, as follows:
 %
 \begin{equation*}
   \mb{u} = \mb{V}_{m} \mb{y}_{m}.
@@ -640,7 +640,7 @@ written in the following form:
 \begin{equation*}
   \begin{aligned}
     \left(\mb{I} - \f{\mb{w}\mb{u}^{H}}{\mb{w}^{H}\mb{u}} \right)
-    \mb{F}(p) \left(\mb{I} - \f{\mb{s}\mb{s}^{H}}{\mb{s}^{H} \mb{s}} \right) \mb{t} & =
+    \mb{F}(p) \left(\mb{I} - \f{\mb{u}\mb{s}^{H}}{\mb{s}^{H} \mb{u}} \right) \mb{t} & =
     - \left(\mb{I} - \f{\mb{w}\mb{u}^{H}}{\mb{w}^{H}\mb{u}} \right) (\mb{F}(p)\mb{u} + \mb{w}) \\
     & = - \mb{F}(p)\mb{u}
   \end{aligned}
@@ -677,7 +677,7 @@ where $\mb{w} = \mb{F}'(p) \mb{u}$ and $\mb{s} = \mb{M} \mb{u}$.
   \State{$j \leftarrow j + 1$}
   \EndWhile
   %
-  \State{$\mb{v}_{i+1} = \mb{t}/\mb{t}^{H} \mb{M} \mb{t}$}
+  \State{$\mb{v}_{i+1} = \mb{t}/\sqrt{\mb{t}^{H} \mb{M} \mb{t}}$}
   %
   \EndWhile
 \end{algorithmic}
@@ -781,9 +781,9 @@ both the left and right eigenvectors.
 One of the advantages of using the Lanczos method is that the
 generalized eigenvalue for the natural frequency problem is symmetric
 and therefore eigenvalues, eigenvectors and the subspace $\mb{V}_{m}
-\in \mathbb{R}^{n \times m}$ are real. Furthermore, this basis will
-remain fixed, regardless of $q_{\infty}$ and can be reused at
-different points within the subspace.
+\in \mathbb{R}^{n \times m}$ are real. Furthermore, the basis for this
+subspace will remain fixed, regardless of $q_{\infty}$ and can be
+reused at different points within the subspace.
 
 In the Jacobi--Davidson method, however, the subspace vectors are
 complex. While the subspace formed from subsequent iterations could be
