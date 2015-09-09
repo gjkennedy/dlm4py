@@ -76,13 +76,16 @@ for i in xrange(num_nodes):
 for j in xrange(ny):
     for i in xrange(nx):
         # Create the shell element class 
-        stiff = constitutive.isoFSDTStiffness(rho, E, nu, kcorr, ys, t, i + nx*j)
+        stiff = constitutive.isoFSDTStiffness(rho, E, nu, 
+                                              kcorr, ys, t, i + nx*j)
         stiff.setRefAxis([0.0, 1.0, 0.0])
         shell_element = elements.MITCShell2(stiff)
 
         # Set the element connectivity
-        elem_conn = np.array([i + (nx+1)*j, i+1 + (nx+1)*j,
-                              i + (nx+1)*(j+1), i+1 + (nx+1)*(j+1)], dtype=np.intc)
+        elem_conn = np.array([i + (nx+1)*j, 
+                              i+1 + (nx+1)*j,
+                              i + (nx+1)*(j+1), 
+                              i+1 + (nx+1)*(j+1)], dtype=np.intc)
         tacs.addElement(shell_element, elem_conn)
 
 # Finalize the mesh
@@ -112,63 +115,84 @@ dlm_solver.initStructure(tacs)
 
 # Set the density and Mach number
 rho = 1.225
+Uval = 4.0
 Mach = 0.0
 
-# Set up the subspace that we'll use for the flutter analysis 
-msub = 20
-rsub = 5
+if 'velocity_sweep' in sys.argv:
+    # Set the span of velocities that we'll use
+    nvals = 25
+    U = np.linspace(2, 20, nvals)
+    
+    # Set the number of structural modes to use
+    nmodes = 1
+    pvals = dlm_solver.velocitySweep(rho, Mach, U, nmodes, omega)
+    
+    # Plot the results using
+    symbols = ['-ko', '-ro', '-go', '-bo', '-mo']
+    plt.figure()
+    for kmode in xrange(nmodes):
+        plt.plot(U, pvals[kmode,:].imag, symbols[kmode], 
+                 label='mode %d'%(kmode))
+        plt.legend()
+        plt.grid()
 
-# Set the number of design variables
-num_design_vars = nx*ny
-Uval = 2.0
+    plt.figure()
+    for kmode in xrange(nmodes):
+        plt.plot(U, pvals[kmode,:].real, symbols[kmode], 
+                 label='mode %d'%(kmode))
+    plt.legend()
+    plt.grid()
+    plt.show()
+
+    sys.exit(0)
+
+# Set up the subspace that we'll use for the flutter analysis
+use_modes = True
+msub = 50
+rsub = 15
+
+# Compute the derivative of tihs mode
 kmode = 0
 
-dlm_solver.setUpSubspace(msub, rsub, use_modes=True)
-p = dlm_solver.computeFlutterMode(rho, Uval, Mach, kmode)
+# Maximum number of determinant iterations
+max_iters = 15
 
+# Solve the problem using det-iteration
+dlm_solver.setUpSubspace(msub, rsub, use_modes=use_modes)
+p = dlm_solver.computeFlutterMode(rho, Uval, Mach, 
+                                  kmode, max_iters=max_iters)
+
+# Set up the information for the derivatives
+num_design_vars = nx*ny
+x = np.zeros(num_design_vars)
+px = -1.0 + 2.0*np.random.uniform(size=x.shape)
+tacs.getDesignVars(x)
+
+# Test the derivatives of the matrix
+dlm_solver.testMatDeriv(x)
+
+# Compute the derivative based on the frozen-mode approximation
 pderiv = dlm_solver.computeFrozenDeriv(rho, Uval, Mach, p,
                                        num_design_vars)
 
-# Perturb the design variables
-x = np.zeros(num_design_vars)
-tacs.getDesignVars(x)
-dh = 1e-4
-x[0] += dh
-tacs.setDesignVars(x)
+# Compute the derivative along the direction px
+pd = np.dot(pderiv, px)
 
-# Set 
-dlm_solver.setUpSubspace(msub, rsub, use_modes=True)
-p_forward = dlm_solver.computeFlutterMode(rho, Uval, Mach, kmode, pinit=p)
+# Set up the higher-order finite-difference
+dh = 1e-5
+offset = [2, 1, -1, -2]
+weights = np.array([-1.0/12.0, 2.0/3.0, -2.0/3.0, 1.0/12.0])
+pvals = np.zeros(4, dtype=np.complex)
 
-pfd = (p_forward - p)/dh
+for i in xrange(len(offset)):
+    # Set the design variables at x[0] + dh
+    xnew = x + offset[i]*dh*px
+    tacs.setDesignVars(xnew)
+    dlm_solver.setUpSubspace(msub, rsub, use_modes=use_modes)
+    pvals[i] = dlm_solver.computeFlutterMode(rho, Uval, Mach,
+                                             kmode, max_iters=max_iters)
 
-print 'FD = ', pfd
-print 'Deriv = ', pderiv[0]
+pfd = np.dot(pvals, weights)/dh
 
-
-# # Set the span of velocities that we'll use
-# nvals = 25
-# U = np.linspace(2, 20, nvals)
-
-# # Set the number of structural modes to use
-# nmodes = 1
-# pvals = dlm_solver.velocitySweep(rho, Mach, U, nmodes, omega)
-
-# # Plot the results using
-# symbols = ['-ko', '-ro', '-go', '-bo', '-mo']
-# plt.figure()
-# for kmode in xrange(nmodes):
-#     plt.plot(U, pvals[kmode,:].imag, symbols[kmode], 
-#              label='mode %d'%(kmode))
-# plt.legend()
-# plt.grid()
-
-# plt.figure()
-# for kmode in xrange(nmodes):
-#     plt.plot(U, pvals[kmode,:].real, symbols[kmode], 
-#              label='mode %d'%(kmode))
-# plt.legend()
-# plt.grid()
-# plt.show()
-
-
+print 'FD =    %20.10e %20.10e'%(pfd.real, pfd.imag)
+print 'Deriv = %20.10e %20.10e'%(pd.real, pd.imag)

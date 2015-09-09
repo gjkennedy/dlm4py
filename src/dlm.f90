@@ -792,7 +792,6 @@ subroutine allEigVecs(n, A, eigs, Zl, Zr, info)
   ! Zr:    the right eigenvectors
   ! info:  success?
 
-
   use precision
   implicit none
 

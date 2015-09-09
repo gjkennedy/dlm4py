@@ -488,6 +488,86 @@ class DLM:
             fp.close()
 
         return
+    
+    def testMatDeriv(self, x, dh=1e-6):
+        '''
+        Test the derivatives within TACS with respect to the mass and
+        stiffness matrices 
+        '''
+
+        # Set the design variables and create a random perturbation
+        # vector
+        self.tacs.setDesignVars(x)
+        p = np.random.uniform(size=x.shape)
+
+        # Form random vectors
+        ur = self.tacs.createVec()
+        vr = self.tacs.createVec()
+        ur.setRand(-1.0, 1.0)
+        vr.setRand(-1.0, 1.0)
+        ur.applyBCs()
+        vr.applyBCs()
+
+        # Assemble the stiffness and mass matrices
+        self.tacs.assembleMatType(self.load_case, self.kmat,
+                                  1.0, elements.STIFFNESS_MATRIX, 
+                                  elements.NORMAL)
+        self.tacs.assembleMatType(self.load_case, self.mmat,
+                                  1.0, elements.MASS_MATRIX, 
+                                  elements.NORMAL)
+
+        # Compute the inner product: vr^{T}*K*ur
+        self.kmat.mult(ur, self.temp)
+        k1 = self.temp.dot(vr)
+
+        self.mmat.mult(ur, self.temp)
+        m1 = self.temp.dot(vr)
+
+        # Compute the derivatives w.r.t. the mass/stiffness matrix
+        krr = np.zeros(x.shape)
+        mrr = np.zeros(x.shape)
+        mtype = elements.STIFFNESS_MATRIX
+        self.tacs.evalMatDVSensInnerProduct(self.load_case, 1.0,
+                                            mtype, vr, ur, krr)
+        mtype = elements.MASS_MATRIX
+        self.tacs.evalMatDVSensInnerProduct(self.load_case, 1.0,
+                                            mtype, vr, ur, mrr)
+        
+        # Evaluate the stiffness matrix at the new point
+        xnew = x + dh*p
+        self.tacs.setDesignVars(xnew)
+
+        # Assemble the stiffness and mass matrices
+        self.tacs.assembleMatType(self.load_case, self.kmat,
+                                  1.0, elements.STIFFNESS_MATRIX, 
+                                  elements.NORMAL)
+        self.tacs.assembleMatType(self.load_case, self.mmat,
+                                  1.0, elements.MASS_MATRIX, 
+                                  elements.NORMAL)
+
+        # Compute the inner product: vr^{T}*K*ur
+        self.kmat.mult(ur, self.temp)
+        k2 = self.temp.dot(vr)
+
+        self.mmat.mult(ur, self.temp)
+        m2 = self.temp.dot(vr)
+
+        # Form the approximate directional derivatives
+        fdk = (k2 - k1)/dh
+        fdm = (m2 - m1)/dh
+
+        # Compute the direction derivatives
+        pdk = np.dot(krr, p)
+        pdm = np.dot(mrr, p)
+
+        print '          %12s %12s %12s %12s'%(
+            'Deriv', 'FD', 'Rel', 'Abs')
+        print 'Stiffness %12.4e %12.4e %12.4e %12.4e'%(
+            pdk, fdk, abs((fdk - pdk)/pdk), abs(fdk - pdk))
+        print 'Mass      %12.4e %12.4e %12.4e %12.4e'%(
+            pdm, fdm, abs((fdm - pdm)/pdm), abs(fdm - pdm))
+
+        return
 
     def initStructure(self, tacs, load_case=0, max_h_size=0.5,
                       gauss_order=2):
@@ -548,6 +628,9 @@ class DLM:
         self.gmres = TACS.GMRES(self.mat, self.pc, 
                                 gmres_iters, nrestart, isflexible)
 
+        # Create a temporary tacs vector
+        self.temp = self.tacs.createVec()
+
         return
 
     def setUpSubspace(self, m, r, sigma=0.0, tol=1e-12,
@@ -567,18 +650,12 @@ class DLM:
         '''
 
         # Assemble the mass and stiffness matrices
-        self.kmat.zeroEntries()
-        self.mmat.zeroEntries()
         self.tacs.assembleMatType(self.load_case, self.kmat,
                                   1.0, elements.STIFFNESS_MATRIX, 
                                   elements.NORMAL)
         self.tacs.assembleMatType(self.load_case, self.mmat,
                                   1.0, elements.MASS_MATRIX, 
                                   elements.NORMAL)
-
-        # Create a temporary tacs vector
-        if self.temp is None:
-            self.temp = self.tacs.createVec()
         
         # Create a list of vectors
         if self.Vm is None:
@@ -759,7 +836,8 @@ class DLM:
 
         return alpha, beta
 
-    def computeFrozenDeriv(self, rho, Uval, Mach, p, num_design_vars):
+    def computeFrozenDeriv(self, rho, Uval, Mach, p, 
+                           num_design_vars, ortho_check=True):
         '''
         Compute the frozen derivative: First, find the (approx) left
         and right eigenvectors associated with the solution. This
@@ -785,12 +863,11 @@ class DLM:
         eigs = np.zeros(m, dtype=np.complex) 
         Zl = np.zeros((m, m), dtype=np.complex) 
         Zr = np.zeros((m, m), dtype=np.complex) 
-        dlm.alleigvecs(Fr_destroyed.T, eigs, Zl.T, Zr.T)
+        dlm.alleigvecs((Fr.transpose()).T, eigs, Zl.T, Zr.T)
 
         # Determine what vectors we should use - this is an educated
         # guess, the smallest eigenvalue/eigenvector triplet 
         k = np.argmin(abs(eigs))
-        eig = eigs[k]
         zl = Zl[k,:]
         zr = Zr[k,:]
 
@@ -810,56 +887,61 @@ class DLM:
             uc.axpy(zr[i].imag, self.Qm[i])
 
         # Do an error check here - is this any good???
-        self.mmat.mult(vr, self.temp)
-        err = ur.dot(self.temp) + 1j*self.temp.dot(uc)
-        self.mmat.mult(vc, self.temp)
-        err += uc.dot(self.temp) + 1j*self.temp.dot(ur)
-        err -= 1.0
-
-        print 'Orthogonality error ', err
-
-        # Compute all of the derivatives
-        mrr = np.zeros(num_design_vars)
-        mrc = np.zeros(num_design_vars)
-        mcr = np.zeros(num_design_vars)        
-        mcc = np.zeros(num_design_vars)
-        self.tacs.evalMatDVSensInnerProduct(self.load_case, 1.0,
-                                            elements.MASS_MATRIX, vr, ur, mrr)
-        self.tacs.evalMatDVSensInnerProduct(self.load_case, 1.0,
-                                            elements.MASS_MATRIX, vc, ur, mcr)
-        self.tacs.evalMatDVSensInnerProduct(self.load_case, 1.0,
-                                            elements.MASS_MATRIX, vr, uc, mrc)
-        self.tacs.evalMatDVSensInnerProduct(self.load_case, 1.0,
-                                            elements.MASS_MATRIX, vc, uc, mcc)
+        if ortho_check:
+            self.mmat.mult(vr, self.temp)
+            err = ur.dot(self.temp) + 1j*self.temp.dot(uc)
+            self.mmat.mult(vc, self.temp)
+            err += uc.dot(self.temp) + 1j*self.temp.dot(ur)
+            err -= 1.0
+            print 'Orthogonality error ', err
 
         # Compute all of the derivatives
         krr = np.zeros(num_design_vars)
         krc = np.zeros(num_design_vars)
         kcr = np.zeros(num_design_vars)        
         kcc = np.zeros(num_design_vars)
+        mtype = elements.STIFFNESS_MATRIX
         self.tacs.evalMatDVSensInnerProduct(self.load_case, 1.0,
-                                            elements.STIFFNESS_MATRIX, vr, ur, krr)
+                                            mtype, vr, ur, krr)
         self.tacs.evalMatDVSensInnerProduct(self.load_case, 1.0,
-                                            elements.STIFFNESS_MATRIX, vc, ur, kcr)
+                                            mtype, vc, ur, kcr)
         self.tacs.evalMatDVSensInnerProduct(self.load_case, 1.0,
-                                            elements.STIFFNESS_MATRIX, vr, uc, krc)
+                                            mtype, vr, uc, krc)
         self.tacs.evalMatDVSensInnerProduct(self.load_case, 1.0,
-                                            elements.STIFFNESS_MATRIX, vc, uc, kcc)
+                                            mtype, vc, uc, kcc)
+
+        # Compute all of the derivatives
+        mrr = np.zeros(num_design_vars)
+        mrc = np.zeros(num_design_vars)
+        mcr = np.zeros(num_design_vars)        
+        mcc = np.zeros(num_design_vars)
+        mtype = elements.MASS_MATRIX
+        self.tacs.evalMatDVSensInnerProduct(self.load_case, 1.0,
+                                            mtype, vr, ur, mrr)
+        self.tacs.evalMatDVSensInnerProduct(self.load_case, 1.0,
+                                            mtype, vc, ur, mcr)
+        self.tacs.evalMatDVSensInnerProduct(self.load_case, 1.0,
+                                            mtype, vr, uc, mrc)
+        self.tacs.evalMatDVSensInnerProduct(self.load_case, 1.0,
+                                            mtype, vc, uc, mcc)
         
         # Evaluate the (approximate) derivative of F(p) w.r.t. p
-        dh = 1j*1e-6
-        dFdp = self.computeFlutterMat(Uval, p + dh, qinf, Mach, len(self.Qm), 
-                                      self.Kr, self.Qm_vwash, self.Qm_dwash, 
-                                      self.Qm_modes)
-        dFdp = (dFdp - Fr)/dh
+        dh = 1e-5
+        F1 = self.computeFlutterMat(Uval, p + dh, qinf, Mach, len(self.Qm), 
+                                    self.Kr, self.Qm_vwash, self.Qm_dwash, 
+                                    self.Qm_modes)
+        F2 = self.computeFlutterMat(Uval, p - dh, qinf, Mach, len(self.Qm), 
+                                    self.Kr, self.Qm_vwash, self.Qm_dwash, 
+                                    self.Qm_modes)
+        dFdp = 0.5*((F1.real - F2.real)/dh + 1j*(F1.imag - F2.imag)/dh)
 
-        # Compute the inner product 
-        zlh = zl.conjugate()
-        fact = np.dot(zlh, np.dot(dFdp, zr))
+        # Compute the inner product of the left and right reduced
+        # eigenvectors
+        fact = np.dot(zl.conjugate(), np.dot(dFdp, zr))
 
-        # Finish the derivative
-        deriv = (p**2*((mrr + mcc) + (mrc - mcr)) + 
-                 (krr + kcc) + 1j*(krc - kcr))/fact
+        # Evaluate the entire derivative
+        deriv = -(p**2*((mrr + mcc) + 1j*(mrc - mcr)) + 
+                  (krr + kcc) + 1j*(krc - kcr))/fact
 
         return deriv
 
@@ -891,13 +973,12 @@ class DLM:
                                       self.Qm_modes, self.omega[kmode])
 
         # Perform the flutter determinant iteration
-        max_iters = 50
         det0 = 1.0*det1
         for k in xrange(max_iters):
             # Compute the new value of p
             pnew = (p2*det1 - p1*det2)/(det1 - det2)
 
-                    # Move p2 to p1
+            # Move p2 to p1
             p1 = 1.0*p2
             det1 = 1.0*det2
 
@@ -910,12 +991,10 @@ class DLM:
                     
             # Print out the iteration history for impaitent people
             if k == 0:
-                print '%4s %10s %10s %10s'%(
+                print '%4s %10s %15s %15s'%(
                     'Iter', 'Det', 'Re(p)', 'Im(p)') 
-            print '%4d %10.2e %10.6f %10.6f'%(
+            print '%4d %10.2e %15.10f %15.10f'%(
                 k, abs(det2), p2.real, p2.imag)
-
-            print p2
 
             if abs(det2) < tol*abs(det0):
                 break
@@ -956,7 +1035,8 @@ class DLM:
                     p2 = p1 + (eps + 1j*eps)
                 else: 
                     eps = 1e-3
-                    p1 = 3.0*pvals[kmode,i-1] - 3.0*pvals[kmode,i-2] + pvals[kmode,i-3]
+                    p1 = (3.0*pvals[kmode,i-1] - 
+                          3.0*pvals[kmode,i-2] + pvals[kmode,i-3])
                     p2 = p1 + (eps + 1j*eps)
 
                 # Compute the flutter determinant
