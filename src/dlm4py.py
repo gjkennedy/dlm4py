@@ -945,10 +945,13 @@ class DLM:
 
         return deriv
 
-    def computeFlutterMode(self, rho, Uval, Mach, kmode, pinit=None, 
+    def computeFlutterMode(self, rho, Uval, Mach, 
+                           kmode, pinit=None, 
                            max_iters=20, tol=1e-12):
         '''
-        Given the velocity, compute the lowest frequency
+        Given the density, velocity and Mach number, compute the
+        damping/frequency of the k-th mode using Hassig's determinant
+        iteration technique.
         '''
 
         # Provide an initial estimate of the frequency
@@ -1000,6 +1003,84 @@ class DLM:
                 break
 
         return p2
+
+    def computeFlutterModeEig(self, rho, Uval, Mach, 
+                              kmode, pinit=None, 
+                              max_iters=20, tol=1e-8, dh=1e-5):
+        '''
+        Given the density, velocity, and Mach number, compute the
+        frequency/damping of the k-th flutter mode using an eigenvalue
+        iteration procedure. This code attempts to use a secant method
+        on the k-th eigenvalue. It may fail to converge if there are
+        cross-over modes at the given point, but it has advantages
+        over the determinant iteration technique.
+
+        The code solves the problem:
+
+        eig_{k}(F(p)) = 0
+        d(eig_{k})/dp = - zl^{H}*dF/dp*zr
+        '''
+
+        # Provide an initial estimate of the frequency
+        if pinit is None:
+            p = -1.0 + 1j*self.omega[kmode]
+        else:
+            p = 1.0*pinit
+
+        # Compute the dynamic pressure
+        qinf = 0.5*rho*Uval**2
+
+        # Allocate space fot the eigenvalue problem
+        m = len(self.Qm)
+        eigs = np.zeros(m, dtype=np.complex) 
+        Zl = np.zeros((m, m), dtype=np.complex) 
+        Zr = np.zeros((m, m), dtype=np.complex) 
+
+        # Iterate until convergence
+        for i in xrange(max_iters):
+            # Compute the flutter matrix at the current point
+            F1 = self.computeFlutterMat(Uval, p, qinf, Mach,
+                                        m, self.Kr, self.Qm_vwash, 
+                                        self.Qm_dwash, self.Qm_modes)
+            
+            # Solve the eigenvalue problem
+            dlm.alleigvecs((F1.transpose()).T, eigs, Zl.T, Zr.T)
+
+            # F(p)*u = eig*u
+            # dF/dp*u + F(p)*du/dp = d(eig)/dp*u + eig*du/dp
+            # v^{H}*dF/dp = d(eig)/dp
+
+            # Determine what eigenvector to use - sort modes by
+            # frequency
+            k = np.argsort(abs(eigs))[kmode]
+
+            # Print out the iteration history for impaitent people
+            if i == 0:
+                print '%4s %10s %15s %15s'%(
+                    'Iter', 'Eig', 'Re(p)', 'Im(p)') 
+            print '%4d %10.2e %15.10f %15.10f'%(
+                i, abs(eigs[k]), p.real, p.imag)
+
+            if abs(eigs[k]) < tol:
+                return p
+
+            # Extract the associated eigenvectors
+            zl = Zl[k,:]
+            zr = Zr[k,:]
+
+            # Compute the derivative of the flutter matrix w.r.t. p
+            F2 = self.computeFlutterMat(Uval, p + dh, qinf, Mach,
+                                        m, self.Kr, self.Qm_vwash, 
+                                        self.Qm_dwash, self.Qm_modes)
+            dFdp = (F2 - F1)/dh
+            
+            # Compute the derivative of the eigenvalue
+            deigdp = np.dot(zl.conjugate(), np.dot(dFdp, zr)) 
+
+            # Apply Newton's method
+            p -= eigs[k]/deigdp
+
+        return p
 
     def velocitySweep(self, rho, Uvals, Mach, nmodes):
         '''

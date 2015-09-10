@@ -147,7 +147,7 @@ if 'velocity_sweep' in sys.argv:
     sys.exit(0)
 
 # Set up the subspace that we'll use for the flutter analysis
-use_modes = True
+use_modes = False # True
 msub = 50
 rsub = 15
 
@@ -159,8 +159,11 @@ max_iters = 15
 
 # Solve the problem using det-iteration
 dlm_solver.setUpSubspace(msub, rsub, use_modes=use_modes)
-p = dlm_solver.computeFlutterMode(rho, Uval, Mach, 
-                                  kmode, max_iters=max_iters)
+# p = dlm_solver.computeFlutterMode(rho, Uval, Mach, 
+#                                   kmode, max_iters=max_iters)
+
+p = dlm_solver.computeFlutterModeEig(rho, Uval, Mach, 
+                                     kmode, max_iters=max_iters)
 
 # Set up the information for the derivatives
 num_design_vars = nx*ny
@@ -189,8 +192,11 @@ for i in xrange(len(offset)):
     xnew = x + offset[i]*dh*px
     tacs.setDesignVars(xnew)
     dlm_solver.setUpSubspace(msub, rsub, use_modes=use_modes)
-    pvals[i] = dlm_solver.computeFlutterMode(rho, Uval, Mach,
-                                             kmode, max_iters=max_iters)
+    # pvals[i] = dlm_solver.computeFlutterMode(rho, Uval, Mach,
+    #                                          kmode, max_iters=max_iters)
+
+    pvals[i] = dlm_solver.computeFlutterModeEig(rho, Uval, Mach,
+                                                kmode, max_iters=max_iters)
 
 pfd = np.dot(pvals, weights)/dh
 
