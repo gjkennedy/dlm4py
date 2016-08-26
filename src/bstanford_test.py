@@ -1,6 +1,6 @@
 '''
-Analyze Bret Stanford's straight and swept flat-plate wings for
-comparison against his results.
+Analyze the straight and swept flat-plate wings for comparison against
+the results provided by Bret Stanford.
 '''
 
 import sys
@@ -39,6 +39,9 @@ kcorr = 0.8333
 ys = 400e6
 t = 0.001
 
+min_t = 0.001
+max_t = 0.01
+
 # Set the size of the mesh (nx, ny) finite-elements
 nx = 12
 ny = 40
@@ -52,49 +55,57 @@ x_off = 0.5*(chord - Lx) - 0.25*chord
 
 # Finally, now we can start to assemble TACS
 comm = MPI.COMM_WORLD
+
+# Set the finite-element size
 num_nodes = (nx+1)*(ny+1)
 num_elements = nx*ny
-csr_size = 4*num_elements
-num_load_cases = 1
 
 # There are 6 degrees of freedom per node
 vars_per_node = 6
 
 # Create the TACS assembler object
-tacs = TACS.TACSAssembler(comm, num_nodes, vars_per_node,
-                          num_elements, num_nodes,
-                          csr_size, num_load_cases)
+tacs = TACS.Assembler.create(comm, vars_per_node,
+                             num_nodes, num_elements)
 
-# Since we're doing everything ourselves, we have to add nodes
-# elements and finalize the mesh. This is a serial case, therefore
-# global and local node numbers are the same (or they could be some
-# other unique mapping)
-for i in xrange(num_nodes):
-    tacs.addNode(i, i)
+elems = []
+elem_conn = []
 
 # Add all the elements
 for j in xrange(ny):
     for i in xrange(nx):
-        # Create the shell element class 
-        stiff = constitutive.isoFSDTStiffness(rho, E, nu, 
-                                              kcorr, ys, t, i + nx*j)
-        stiff.setRefAxis([0.0, 1.0, 0.0])
-        shell_element = elements.MITCShell2(stiff)
+        # Create the shell element class
+        dv_num = i + nx*j
+        stiff = constitutive.isoFSDT(rho, E, nu, kcorr, ys, t,
+                                     dv_num, min_t, max_t)
+
+        # stiff.setRefAxis([0.0, 1.0, 0.0])
+        shell_element = elements.MITCShell(2, stiff)
+        elems.append(shell_element)
 
         # Set the element connectivity
-        elem_conn = np.array([i + (nx+1)*j, 
-                              i+1 + (nx+1)*j,
-                              i + (nx+1)*(j+1), 
-                              i+1 + (nx+1)*(j+1)], dtype=np.intc)
-        tacs.addElement(shell_element, elem_conn)
+        elem_conn.append([i + (nx+1)*j, 
+                          i+1 + (nx+1)*j,
+                          i + (nx+1)*(j+1), 
+                          i+1 + (nx+1)*(j+1)])
+        
+# Create the connectivity array
+conn = np.array(elem_conn, dtype=np.intc).flatten()
+ptr = np.arange(0, len(conn)+1, 4, dtype=np.intc)
 
-# Finalize the mesh
-tacs.finalize()
+# Set the connectivity and the elements
+tacs.setElements(elems)
+tacs.setElementConnectivity(conn, ptr)
 
-# Set the boundary conditions and nodal locations
-bcs = np.arange(vars_per_node, dtype=np.intc)
-Xpts = np.zeros(3*num_nodes)
+# Add the nodal boundary conditions
+bc_nodes = np.arange(nx+1, dtype=np.intc)
+tacs.addBCs(bc_nodes)
 
+# Initialize the mesh
+tacs.initialize()
+
+# Set the node locations
+X = tacs.createNodeVec()
+Xpts = X.getArray()
 for j in xrange(ny+1):
     for i in xrange(nx+1):
         node = i + (nx+1)*j
@@ -105,10 +116,9 @@ for j in xrange(ny+1):
         Xpts[3*node] = x
         Xpts[3*node+1] = y
 
-        if j == 0:
-            tacs.addBC(node, bcs)
-
-tacs.setNodes(Xpts)
+# Set the nodes into TACS
+tacs.setNodes(X)
+tacs.getNodes(X)
 
 # Initialize the structural part of the solver
 dlm_solver.initStructure(tacs)

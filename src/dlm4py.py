@@ -4,7 +4,8 @@ This is the python-level interface for the dlm code.
 
 import numpy as np
 import sys
-from tacs import TACS, elements, constitutive
+from tacs import TACS
+from funtofem import FUNtoFEM
 from mpi4py import MPI
 import dlm
 
@@ -105,7 +106,6 @@ class JDVec:
             self.xc.zeroEntries()
 
         return
-
 
 class GMRES:
     def __init__(self, mat, pc, msub):
@@ -509,12 +509,9 @@ class DLM:
         vr.applyBCs()
 
         # Assemble the stiffness and mass matrices
-        self.tacs.assembleMatType(self.load_case, self.kmat,
-                                  1.0, elements.STIFFNESS_MATRIX, 
-                                  elements.NORMAL)
-        self.tacs.assembleMatType(self.load_case, self.mmat,
-                                  1.0, elements.MASS_MATRIX, 
-                                  elements.NORMAL)
+        self.tacs.assembleJacobian(1.0, 0.0, 0.0, None, self.kmat)
+        self.tacs.assembleMatType(TACS.PY_MASS_MATRIX,
+                                  self.mmat, TACS.PY_NORMAL)
 
         # Compute the inner product: vr^{T}*K*ur
         self.kmat.mult(ur, self.temp)
@@ -526,25 +523,20 @@ class DLM:
         # Compute the derivatives w.r.t. the mass/stiffness matrix
         krr = np.zeros(x.shape)
         mrr = np.zeros(x.shape)
-        mtype = elements.STIFFNESS_MATRIX
-        self.tacs.evalMatDVSensInnerProduct(self.load_case, 1.0,
-                                            mtype, vr, ur, krr)
-        mtype = elements.MASS_MATRIX
-        self.tacs.evalMatDVSensInnerProduct(self.load_case, 1.0,
-                                            mtype, vr, ur, mrr)
+        mtype = TACS.PY_STIFFNESS_MATRIX
+        self.tacs.addMatDVSensInnerProduct(1.0, mtype, vr, ur, krr)
+        mtype = TACS.PY_MASS_MATRIX
+        self.tacs.addMatDVSensInnerProduct(1.0, mtype, vr, ur, mrr)
         
         # Evaluate the stiffness matrix at the new point
         xnew = x + dh*p
         self.tacs.setDesignVars(xnew)
 
         # Assemble the stiffness and mass matrices
-        self.tacs.assembleMatType(self.load_case, self.kmat,
-                                  1.0, elements.STIFFNESS_MATRIX, 
-                                  elements.NORMAL)
-        self.tacs.assembleMatType(self.load_case, self.mmat,
-                                  1.0, elements.MASS_MATRIX, 
-                                  elements.NORMAL)
-
+        self.tacs.assembleJacobian(1.0, 0.0, 0.0, None, self.kmat)
+        self.tacs.assembleMatType(TACS.PY_MASS_MATRIX,
+                                  self.mmat, TACS.PY_NORMAL)
+        
         # Compute the inner product: vr^{T}*K*ur
         self.kmat.mult(ur, self.temp)
         k2 = self.temp.dot(vr)
@@ -569,42 +561,39 @@ class DLM:
 
         return
 
-    def initStructure(self, tacs, load_case=0, max_h_size=0.5,
-                      gauss_order=2):
+    def initStructure(self, tacs):
         '''
         Set up the load and displacement transfer object for a general
         TACS finite-element model.
         '''
 
-        # Set the load case number
-        self.load_case = load_case
-
         # Get the communicator from the TACSAssembler object
         self.tacs = tacs
-        comm = self.tacs.getMPIComm()
+        comm = MPI.COMM_WORLD
 
         # Now, set up the load and displacement transfer object
         struct_root = 0
         aero_root = 0
 
-        # Only use the first rank as an aerodynamic processor
-        aero_member = 0
-        if comm.rank == 0:
-            aero_member = 1
-
         # Get the aerodynamic mesh connectivity
         aero_pts = self.X.flatten()
         aero_conn = self.conn.flatten()
 
-        # Specify the load/displacement transfer data
-        self.transfer = TACS.LDTransfer(comm, struct_root, 
-                                        aero_root, aero_member,
-                                        aero_pts, aero_conn, 
-                                        self.tacs, max_h_size, gauss_order)
+        # # Specify the load/displacement transfer data
+        self.funtofem = FUNtoFEM.pyFUNtoFEM(comm, comm, struct_root,
+                                            comm, aero_root,
+                                            FUNtoFEM.PY_LINEAR)
+        self.funtofem.setAeroNodes(aero_pts)
 
-        # Set the aerodynamic surface nodes
-        self.transfer.setAeroSurfaceNodes(aero_pts)
+        # Set the structural points into FUNtoFEM
+        X = self.tacs.createNodeVec()
+        self.tacs.getNodes(X)
+        self.funtofem.setStructNodes(X.getArray())
 
+        # Initialize the load/displacement transfer
+        num_nearest = 25
+        self.funtofem.initialize(num_nearest)
+            
         # Set up the matrices/pc/Krylov solver that will be required
         # for the flutter analysis
         self.mat = tacs.createFEMat()
@@ -616,17 +605,12 @@ class DLM:
         # Create the preconditioner and the solver object.  Note that
         # these settings are best for a shell-type finite-element
         # model.
-        lev = 10000
-        fill = 10.0
-        reorder_schur = 1
-        self.pc = TACS.PcScMat(self.mat, lev, fill, reorder_schur)
+        self.pc = TACS.Pc(self.mat)
 
         # Create the GMRES object 
         gmres_iters = 10
         nrestart = 0
-        isflexible = 0
-        self.gmres = TACS.GMRES(self.mat, self.pc, 
-                                gmres_iters, nrestart, isflexible)
+        self.ksm = TACS.KSM(self.mat, self.pc, gmres_iters, nrestart)
 
         # Create a temporary tacs vector
         self.temp = self.tacs.createVec()
@@ -650,12 +634,9 @@ class DLM:
         '''
 
         # Assemble the mass and stiffness matrices
-        self.tacs.assembleMatType(self.load_case, self.kmat,
-                                  1.0, elements.STIFFNESS_MATRIX, 
-                                  elements.NORMAL)
-        self.tacs.assembleMatType(self.load_case, self.mmat,
-                                  1.0, elements.MASS_MATRIX, 
-                                  elements.NORMAL)
+        self.tacs.assembleJacobian(1.0, 0.0, 0.0, None, self.kmat)
+        self.tacs.assembleMatType(TACS.PY_MASS_MATRIX,
+                                  self.mmat, TACS.PY_NORMAL)
         
         # Create a list of vectors
         if self.Vm is None:
@@ -674,6 +655,8 @@ class DLM:
         eigvecs = np.zeros((m-1, m-1))
         for i in xrange(max_iters):
             alpha, beta = self.lanczos(self.Vm, sigma)
+
+            print alpha, beta
 
             # Compute the final coefficient
             b0 = beta[-1]
@@ -752,11 +735,10 @@ class DLM:
         self.Qm_dwash = np.zeros((self.npanels, len(self.Qm)))
 
         # Extract the natural frequencies of vibration
-        disp = np.zeros(3*self.nnodes)
         for k in xrange(len(self.Qm)):
             # Transfer the eigenvector to the aerodynamic surface
-            self.transfer.setDisplacements(self.Qm[k])    
-            self.transfer.getDisplacements(disp)
+            self.funtofem.transferDisps(self.Qm[k].getArray())
+            disp = self.funtofem.getAeroDisps()
 
             # Compute the normal wash on the aerodynamic mesh
             vk, dk = self.getModeBCs(disp.reshape(self.nnodes, 3))
@@ -812,7 +794,7 @@ class DLM:
         for i in xrange(len(Vm)-1):
             # Compute V[i+1] = (K - sigma*M)^{-1}*M*V[i]
             self.mmat.mult(Vm[i], self.temp)
-            self.gmres.solve(self.temp, Vm[i+1])
+            self.ksm.solve(self.temp, Vm[i+1])
             
             # Make sure that the boundary conditions are enforced
             # fully
@@ -900,30 +882,22 @@ class DLM:
         krc = np.zeros(num_design_vars)
         kcr = np.zeros(num_design_vars)        
         kcc = np.zeros(num_design_vars)
-        mtype = elements.STIFFNESS_MATRIX
-        self.tacs.evalMatDVSensInnerProduct(self.load_case, 1.0,
-                                            mtype, vr, ur, krr)
-        self.tacs.evalMatDVSensInnerProduct(self.load_case, 1.0,
-                                            mtype, vc, ur, kcr)
-        self.tacs.evalMatDVSensInnerProduct(self.load_case, 1.0,
-                                            mtype, vr, uc, krc)
-        self.tacs.evalMatDVSensInnerProduct(self.load_case, 1.0,
-                                            mtype, vc, uc, kcc)
+        mtype = TACS.PY_STIFFNESS_MATRIX
+        self.tacs.addMatDVSensInnerProduct(1.0, mtype, vr, ur, krr)
+        self.tacs.addMatDVSensInnerProduct(1.0, mtype, vc, ur, kcr)
+        self.tacs.addMatDVSensInnerProduct(1.0, mtype, vr, uc, krc)
+        self.tacs.addMatDVSensInnerProduct(1.0, mtype, vc, uc, kcc)
 
         # Compute all of the derivatives
         mrr = np.zeros(num_design_vars)
         mrc = np.zeros(num_design_vars)
         mcr = np.zeros(num_design_vars)        
         mcc = np.zeros(num_design_vars)
-        mtype = elements.MASS_MATRIX
-        self.tacs.evalMatDVSensInnerProduct(self.load_case, 1.0,
-                                            mtype, vr, ur, mrr)
-        self.tacs.evalMatDVSensInnerProduct(self.load_case, 1.0,
-                                            mtype, vc, ur, mcr)
-        self.tacs.evalMatDVSensInnerProduct(self.load_case, 1.0,
-                                            mtype, vr, uc, mrc)
-        self.tacs.evalMatDVSensInnerProduct(self.load_case, 1.0,
-                                            mtype, vc, uc, mcc)
+        mtype = TACS.PY_MASS_MATRIX
+        self.tacs.addMatDVSensInnerProduct(1.0, mtype, vr, ur, mrr)
+        self.tacs.addMatDVSensInnerProduct(1.0, mtype, vc, ur, mcr)
+        self.tacs.addMatDVSensInnerProduct(1.0, mtype, vr, uc, mrc)
+        self.tacs.addMatDVSensInnerProduct(1.0, mtype, vc, uc, mcc)
         
         # Evaluate the (approximate) derivative of F(p) w.r.t. p
         dh = 1e-5
