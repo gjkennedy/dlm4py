@@ -353,10 +353,142 @@ class DLM:
         F = self.computeFlutterMat(U, p, qinf, Mach, nvecs, 
                                    Kr, vwash, dwash, modes)
         return np.linalg.det(F)/(omega**(2*nvecs))
-    
 
-    def computeStaticLoad(self, aoa, U, qinf, Mach, 
-                          nvecs, omega, modes, filename=None):
+    def computeElasticMotion(self, U, omega, qinf, Mach,
+                            nvecs, Kr, vwash, dwash, modes,
+                            w_gust,
+                            aoa=0.0, tol=1e-4, max_iters=100):
+        '''
+        Compute the forced motion q due to sinusoidal gust
+        '''
+        # Compute the influence coefficient matrix
+        self.computeInfluenceMatrix(U, omega, Mach)
+
+        # Set the mode coefficients
+        q = np.zeros(nvecs, dtype=np.complex)
+        
+        # Compute the boundary condition: -1/U*(dh/dt + U*dh/dx)
+        # dwash = -dh/dx, vwash = -dh/dt
+        mode_wash = 1j*omega*vwash/U + dwash
+        
+        aoa_total = 1j*omega*w_gust/U + aoa
+
+        for k in xrange(max_iters):
+
+            # Compute the wash as a function of time
+            wash = aoa_total + np.dot(mode_wash, q)
+                                       
+            # Solve for the normal wash due to the motion of the wing
+            # through the flutter mode
+            Cp = np.linalg.solve(self.Dtrans.T, wash)
+
+            # Compute the forces due to the flutter motion
+            forces = np.zeros((self.nnodes, 3), dtype=np.complex)
+
+            # Add the forces to the vector
+            dlm.addcpforces(qinf, Cp, self.X.T, self.conn.T, forces.T)
+
+            # Compute the aerodynamic forces
+            Fa = np.dot(modes.T, forces.flatten())
+
+            A = Kr - omega**2*np.eye(nvecs)
+
+            # Solve for the new values of q
+            q = np.linalg.solve(A, Fa)
+
+            #print q
+            # if np.absolute((wash-mode_wash)/mode_wash) > tol:
+            #    break
+                                       
+
+        return q
+
+    def computeRigidMotion(self, U, qinf, Mach, omega, m, Iyy, xcm, aoa,
+                             w_gust, max_iters=10):
+
+        g = 9.81      
+        aoa_total = 1j*omega*w_gust/U + aoa
+
+        for i in xrange(max_iters):
+
+            Cp = self.solve(U, aoa=aoa_total, omega=omega, Mach=Mach)
+            forces = self.addAeroForces(qinf, Cp)
+            force = np.sum(forces)
+            moment = self.computeMoment(qinf, Cp, xcm)
+
+            inertia_mat = (-omega**2)*np.array([[m, 0, mg],
+                                                [0, m, 0],
+                                                [0, 0, Iyy]])
+            force_vec = np.array([0,force,moment])
+            disp_vec = np.linalg.solve(inertia_mat, force_vec)
+            x_bar = disp_vec[0]
+            z_bar = disp_vec[1]
+            theta_bar = disp_vec[2]    
+
+            dzdt = 1j*omega*z_bar/U
+            dzdx = theta_bar
+
+            aoa_total = 1j*omega*w_gust/U + aoa + dzdt/U + theta_bar
+
+        return x_bar, z_bar, theta_bar
+
+    def computeFullMotion(self, U, qinf, Mach, omega, m, I, xcm,
+                                   aoa, w_gust, Kr, modes, nvecs,
+                                   vwash, dwash, max_iters=10):
+
+        g = 9.81
+        # Set the mode coefficients
+        q = np.zeros(nvecs, dtype=np.complex)
+        
+        # Compute the boundary condition: -1/U*(dh/dt + U*dh/dx)
+        # dwash = -dh/dx, vwash = -dh/dt
+        mode_wash = 1j*omega*vwash/U + dwash
+       
+        aoa_total = 1j*omega*w_gust/U + aoa
+
+        for i in xrange(max_iters):
+
+            Cp = self.solve(U, aoa=aoa_total, omega=omega, Mach=Mach)
+            forces = self.addAeroForces(qinf, Cp)
+            force = np.sum(forces)
+            moment = self.computeMoment(qinf, Cp, xcm)
+
+            z0 = (-1.0/omega**2)*((force/m)-g)
+            a0 = (-1.0/omega**2)*(moment/I)       
+
+            dzdt = 1j*omega*z0/U
+            dzdx = a0
+
+            aoa_total = 1j*omega*w_gust/U + aoa + dzdt/U + a0 # check this
+            
+            mode_wash = 1j*omega*vwash/U + dwash + dzdt/U + dzdx
+
+            # Compute the wash as a function of time
+            wash = aoa_total + np.dot(mode_wash, q)
+                                       
+            # Solve for the normal wash due to the motion of the wing
+            # through the flutter mode
+            #Cp = self.solve(U, aoa=aoa, omega=omega, Mach=Mach)
+
+            # Compute the forces due to the flutter motion
+            forces = np.zeros((self.nnodes, 3), dtype=np.complex)
+
+            # Add the forces to the vector
+            dlm.addcpforces(qinf, Cp, self.X.T, self.conn.T, forces.T)
+
+            # Compute the aerodynamic forces
+            Fa = np.dot(modes.T, forces.flatten())
+
+            A = Kr - omega**2*np.eye(nvecs)
+
+            # Solve for the new values of q
+            q = np.linalg.solve(A, Fa)
+
+        return q
+
+    
+    def computeStaticLoad(self, aoa, U, qinf, Mach, nvecs,
+                          omega, modes, filename=None):
         '''
         Compute the static loads due 
         '''
@@ -446,7 +578,22 @@ class DLM:
         forces = np.zeros((self.nnodes, 3), dtype=np.complex)
         dlm.addcpforces(qinf, Cp, self.X.T, self.conn.T, forces.T)
 
-        return forces        
+        return forces
+
+    def computeMoment(self, qinf, Cp, xcm):
+        '''
+        Compute the aero moment about a chordwise location xcm
+        '''
+        
+        forces = self.addAeroForces(qinf, Cp)
+        forces = forces[:, 1::3]
+        moment_arm = self.X[:, 0::3] - xcm
+        forces = forces.flatten()
+        moment_arm = moment_arm.flatten()
+        moments = np.dot(forces, moment_arm)
+        moment = np.sum(moments)
+
+        return moment
 
     def writeToFile(self, Cp, filename='solution.dat', u=None):
         '''
@@ -505,8 +652,8 @@ class DLM:
         vr = self.tacs.createVec()
         ur.setRand(-1.0, 1.0)
         vr.setRand(-1.0, 1.0)
-        ur.applyBCs()
-        vr.applyBCs()
+        self.tacs.applyBCs(ur)
+        self.tacs.applyBCs(vr)
 
         # Assemble the stiffness and mass matrices
         self.tacs.assembleJacobian(1.0, 0.0, 0.0, None, self.kmat)
@@ -579,10 +726,11 @@ class DLM:
         aero_pts = self.X.flatten()
         aero_conn = self.conn.flatten()
 
-        # # Specify the load/displacement transfer data
+        # Specify the load/displacement transfer data
+        isymm = -1
         self.funtofem = FUNtoFEM.pyFUNtoFEM(comm, comm, struct_root,
                                             comm, aero_root,
-                                            FUNtoFEM.PY_LINEAR)
+                                            FUNtoFEM.PY_LINEAR, isymm)
         self.funtofem.setAeroNodes(aero_pts)
 
         # Set the structural points into FUNtoFEM
@@ -693,7 +841,7 @@ class DLM:
                 for j in xrange(m-1):
                     self.Vm[0].axpy(weights[j], self.Vm[j])
 
-                self.Vm[0].applyBCs()
+                self.tacs.applyBCs(Vm[0])
 
         # Now that we've built Vm, compute the inner product with the
         # K matrix for later useage
@@ -783,7 +931,7 @@ class DLM:
 
         # Apply the boundary conditions to make sure that the 
         # initial vector satisfies them
-        Vm[0].applyBCs()
+        self.tacs.applyBCs(Vm[0])
 
         # Scale the initial vector
         self.mmat.mult(Vm[0], self.temp)
@@ -798,7 +946,7 @@ class DLM:
             
             # Make sure that the boundary conditions are enforced
             # fully
-            Vm[i+1].applyBCs()
+            self.tacs.applyBCs(Vm[i+1])
 
             # Perform full modified Gram-Schmidt orthogonalization
             # with mass-matrix inner products
