@@ -391,49 +391,49 @@ class DLM:
         dq = 1.0e-1
         
         # compute aero forces for +du case
-        uk = np.array([0.0, 0.0, 0.0, 0.0, aoa, 0.0])
-        ukdot = np.array([du, 0.0, 0.0, 0.0, 0.0, 0.0])
-        w = self.computeRigidDownwash(U, cref, omega, uk, ukdot)
+        uk = np.array([0.0, 0.0, 0.0])
+        ukdot = np.array([du, 0.0, 0.0])
+        w = self.computeRigidDownwash(U, cref, omega, uk, ukdot, xcm)
         Cp = self.solve(U, aoa=aoa, omega=omega, Mach=Mach, w=w)
         X_pdu, _, Z_pdu = self.computeCGForces(qinf, Cp)
         M_pdu = self.computeCGMoment(qinf, Cp, xcm)
 
         # compute aero forces for -du case
-        uk = np.array([0.0, 0.0, 0.0, 0.0, aoa, 0.0])
-        ukdot = np.array([-du, 0.0, 0.0, 0.0, 0.0, 0.0])
-        w = self.computeRigidDownwash(U, cref, omega, uk, ukdot)
+        uk = np.array([0.0, 0.0, 0.0])
+        ukdot = np.array([-du, 0.0, 0.0])
+        w = self.computeRigidDownwash(U, cref, omega, uk, ukdot, xcm)
         Cp = self.solve(U, aoa=aoa, omega=omega, Mach=Mach, w=w)
         X_mdu, _, Z_mdu = self.computeCGForces(qinf, Cp)
         M_mdu = self.computeCGMoment(qinf, Cp, xcm)
 
         # compute aero forces for +dw case
-        uk = np.array([0.0, 0.0, 0.0, 0.0, aoa, 0.0])
-        ukdot = np.array([0.0, 0.0, dw, 0.0, 0.0, 0.0])
-        w = self.computeRigidDownwash(U, cref, omega, uk, ukdot)
+        uk = np.array([0.0, 0.0, 0.0])
+        ukdot = np.array([0.0, dw, 0.0])
+        w = self.computeRigidDownwash(U, cref, omega, uk, ukdot, xcm)
         Cp = self.solve(U, aoa=aoa, omega=omega, Mach=Mach, w=w)
         X_pdw, _, Z_pdw = self.computeCGForces(qinf, Cp)
         M_pdw = self.computeCGMoment(qinf, Cp, xcm)
         
         # compute aero forces for -dw case
-        uk = np.array([0.0, 0.0, 0.0, 0.0, aoa, 0.0])
-        ukdot = np.array([0.0, 0.0, -dw, 0.0, 0.0, 0.0])
-        w = self.computeRigidDownwash(U, cref, omega, uk, ukdot)
+        uk = np.array([0.0, 0.0, 0.0])
+        ukdot = np.array([ 0.0, -dw, 0.0])
+        w = self.computeRigidDownwash(U, cref, omega, uk, ukdot, xcm)
         Cp = self.solve(U, aoa=aoa, omega=omega, Mach=Mach, w=w)
         X_mdw, _, Z_mdw = self.computeCGForces(qinf, Cp)
         M_mdw = self.computeCGMoment(qinf, Cp, xcm)
         
         # compute aero forces for +dq case
-        uk = np.array([0.0, 0.0, 0.0, 0.0, aoa, 0.0])
-        ukdot = np.array([0.0, 0.0, 0.0, 0.0, dq, 0.0])
-        w = self.computeRigidDownwash(U, cref, omega, uk, ukdot)
+        uk = np.array([0.0, 0.0, 0.0])
+        ukdot = np.array([0.0, 0.0, dq])
+        w = self.computeRigidDownwash(U, cref, omega, uk, ukdot, xcm)
         Cp = self.solve(U, aoa=aoa, omega=omega, Mach=Mach, w=w)
         X_pdq, _, Z_pdq = self.computeCGForces(qinf, Cp)
         M_pdq = self.computeCGMoment(qinf, Cp, xcm)
         
         # compute aero forces for -dq case
-        uk = np.array([0.0, 0.0, 0.0, 0.0, aoa, 0.0])
-        ukdot = np.array([0.0, 0.0, 0.0, 0.0, -dq, 0.0])
-        w = self.computeRigidDownwash(U, cref, omega, uk, ukdot)
+        uk = np.array([0.0, 0.0, 0.0])
+        ukdot = np.array([0.0, 0.0, -dq])
+        w = self.computeRigidDownwash(U, cref, omega, uk, ukdot, xcm)
         Cp = self.solve(U, aoa=aoa, omega=omega, Mach=Mach, w=w)
         X_mdq, _, Z_mdq = self.computeCGForces(qinf, Cp)
         M_mdq = self.computeCGMoment(qinf, Cp, xcm)
@@ -449,11 +449,11 @@ class DLM:
         Mw = (M_pdw - M_mdw)/(2*dw) # dM/dw
 
         # perform FD to get dX/dq, dZ/dq, dM/dq
-        Xq = (X_pdq - X_mdq)/(2*dw) # dX/dq
-        Zq = (Z_pdq - Z_mdq)/(2*dw) # dZ/dq
-        Mq = (M_pdw - M_mdq)/(2*dw) # dM/dq
+        Xq = (X_pdq - X_mdq)/(2*dq) # dX/dq
+        Zq = (Z_pdq - Z_mdq)/(2*dq) # dZ/dq
+        Mq = (M_pdw - M_mdq)/(2*dq) # dM/dq
 
-        dF_vec = [Xu, Xw, Xq, Zu, Zw, Zq, Mu, Mw, Mq]
+        dF_vec = np.array([Xu, Xw, Xq, Zu, Zw, Zq, Mu, Mw, Mq])
         
         return dF_vec
 
@@ -513,16 +513,16 @@ class DLM:
         aoa_total = 1j*omega*w_gust/U + aoa
 
         for i in xrange(max_iters):
-
-            Cp = self.solve(U, aoa=aoa_total, omega=omega, Mach=Mach)
-            forces = self.addAeroForces(qinf, Cp)
-            force = np.sum(forces)
-            moment = self.computeCGMoment(qinf, Cp, xcm)
+            
+            # w = computeRigidDownwash(_, _, _)
+            Cp = self.solve(U, aoa=aoa_total, omega=omega, Mach=Mach) #,w=w)
+            X, _, Z = self.computeCGForces(qinf, Cp)
+            M = self.computeCGMoment(qinf, Cp, xcm)
 
             inertia_mat = (-omega**2)*np.array([[m, 0, mg],
                                                 [0, m, 0],
                                                 [0, 0, Iyy]])
-            force_vec = np.array([0,force,moment])
+            force_vec = np.array([X, Z, M])
             disp_vec = np.linalg.solve(inertia_mat, force_vec)
             x_bar = disp_vec[0]
             z_bar = disp_vec[1]
@@ -639,27 +639,32 @@ class DLM:
                                    self.epstol)
         return
 
-    def computeRigidDownwash(self, U, cref, omega, uk, ukdot):
+    def computeRigidDownwash(self, U, cref, omega, uk_cm, ukdot_cm, xcm):
         '''
         Compute downwash vector for a given rigid body motion
         where:
-        uk = [x y z phi theta psi]^T
-        ukdot = (d/dt)uk
-        and uk is located at the cg
+        uk_cm = [x z theta]
+        ukdot_cm = (d/dt)uk
         '''
 
-        k = (cref*omega)/(2*U)
+        theta_cm = uk_cm[2]
+        u_cm = ukdot_cm[0]
+        w_cm = ukdot_cm[1]
+        q_cm = ukdot_cm[2]
+        
+        #k = (cref*omega)/(2*U)
         w = np.zeros(self.npanels, dtype=np.complex)
-        D1jk = np.array([0, 0, 0, 0, 1, 0], dtype=np.complex)
+        #D1jk = np.array([0, 0, 0, 0, 1, 0], dtype=np.complex)
         
         for i in xrange(self.npanels):
-            D2jk = (-2.0/self.dXav[i])*np.array([0, 0, 1, 0, -self.dXav[i]/4.0, 0], dtype=np.complex)
-            #w[i] = np.dot((D1jk + 1j*k*D2jk), uk)
-            w[i] = np.dot(D1jk, uk) + k*np.dot(D2jk, ukdot)
-        
+            #D2jk = (-2.0/self.dXav[i])*np.array([0, 0, 1, 0, -self.dXav[i]/4.0, 0], dtype=np.complex)
+            #w[i] = np.dot((D1jk + 1j*k*D2jk), uk_cm)
+            xbar = xcm - self.Xr[i, 0]
+            w[i] = -w_cm - q_cm*xbar - (U+u_cm)*theta_cm
+            
         return w
     
-    def solve(self, U, aoa=0.0, omega=0.0, Mach=0.0, w=None):
+    def solve(self, U, aoa=0.0, omega=0.0, Mach=0.0, w=None): # aoa not used?
         '''
         Solve the linear system (in the frequency domain)
         '''
