@@ -354,6 +354,109 @@ class DLM:
                                    Kr, vwash, dwash, modes)
         return np.linalg.det(F)/(omega**(2*nvecs))
 
+    def computeRigidEigs(self, U, rho, Mach, cref, aoa, omega, m, Iyy, xcm, W=0.0):
+        '''
+        Compute eigenvalues and eigenvectors of rigid a/c motion
+        '''
+
+        g = 9.81
+        dF_array = self.computeAeroForceDerivs(U, rho, Mach, cref, aoa, omega, xcm)
+        Xu = dF_array[0]
+        Xw = dF_array[1]
+        Xq = dF_array[2]
+        Zu = dF_array[3]
+        Zw = dF_array[4]
+        Zq = dF_array[5]
+        Mu = dF_array[6]
+        Mw = dF_array[7]
+        Mq = dF_array[8]
+        A = np.array([[Xu/m  , Xw/m  , ((Xq/m)-W), -g*np.cos(np.radians(aoa))],
+                      [Zu/m  , Zw/m  , ((Zq/m)+U), -g*np.sin(np.radians(aoa))],
+                      [Mu/Iyy, Mw/Iyy, Mq/Iyy    , 0.0                       ],
+                      [0.0   , 0.0   , 1.0       , 0.0                       ]])
+        w, v = np.linalg.eig(A)
+
+        return A, w, v
+
+    
+    def computeAeroForceDerivs(self, U, rho, Mach, cref, aoa, omega, xcm):
+        '''
+        Compute derivatives of aero forces/moment wrt u, w, q using FD 
+        for symmetric longitudinal rigid motion
+        '''
+
+        qinf = 0.5*rho*U**2
+        du = 1.0e-1
+        dw = 1.0e-1
+        dq = 1.0e-1
+        
+        # compute aero forces for +du case
+        uk = np.array([0.0, 0.0, 0.0, 0.0, aoa, 0.0])
+        ukdot = np.array([du, 0.0, 0.0, 0.0, 0.0, 0.0])
+        w = self.computeRigidDownwash(U, cref, omega, uk, ukdot)
+        Cp = self.solve(U, aoa=aoa, omega=omega, Mach=Mach, w=w)
+        X_pdu, _, Z_pdu = self.computeCGForces(qinf, Cp)
+        M_pdu = self.computeCGMoment(qinf, Cp, xcm)
+
+        # compute aero forces for -du case
+        uk = np.array([0.0, 0.0, 0.0, 0.0, aoa, 0.0])
+        ukdot = np.array([-du, 0.0, 0.0, 0.0, 0.0, 0.0])
+        w = self.computeRigidDownwash(U, cref, omega, uk, ukdot)
+        Cp = self.solve(U, aoa=aoa, omega=omega, Mach=Mach, w=w)
+        X_mdu, _, Z_mdu = self.computeCGForces(qinf, Cp)
+        M_mdu = self.computeCGMoment(qinf, Cp, xcm)
+
+        # compute aero forces for +dw case
+        uk = np.array([0.0, 0.0, 0.0, 0.0, aoa, 0.0])
+        ukdot = np.array([0.0, 0.0, dw, 0.0, 0.0, 0.0])
+        w = self.computeRigidDownwash(U, cref, omega, uk, ukdot)
+        Cp = self.solve(U, aoa=aoa, omega=omega, Mach=Mach, w=w)
+        X_pdw, _, Z_pdw = self.computeCGForces(qinf, Cp)
+        M_pdw = self.computeCGMoment(qinf, Cp, xcm)
+        
+        # compute aero forces for -dw case
+        uk = np.array([0.0, 0.0, 0.0, 0.0, aoa, 0.0])
+        ukdot = np.array([0.0, 0.0, -dw, 0.0, 0.0, 0.0])
+        w = self.computeRigidDownwash(U, cref, omega, uk, ukdot)
+        Cp = self.solve(U, aoa=aoa, omega=omega, Mach=Mach, w=w)
+        X_mdw, _, Z_mdw = self.computeCGForces(qinf, Cp)
+        M_mdw = self.computeCGMoment(qinf, Cp, xcm)
+        
+        # compute aero forces for +dq case
+        uk = np.array([0.0, 0.0, 0.0, 0.0, aoa, 0.0])
+        ukdot = np.array([0.0, 0.0, 0.0, 0.0, dq, 0.0])
+        w = self.computeRigidDownwash(U, cref, omega, uk, ukdot)
+        Cp = self.solve(U, aoa=aoa, omega=omega, Mach=Mach, w=w)
+        X_pdq, _, Z_pdq = self.computeCGForces(qinf, Cp)
+        M_pdq = self.computeCGMoment(qinf, Cp, xcm)
+        
+        # compute aero forces for -dq case
+        uk = np.array([0.0, 0.0, 0.0, 0.0, aoa, 0.0])
+        ukdot = np.array([0.0, 0.0, 0.0, 0.0, -dq, 0.0])
+        w = self.computeRigidDownwash(U, cref, omega, uk, ukdot)
+        Cp = self.solve(U, aoa=aoa, omega=omega, Mach=Mach, w=w)
+        X_mdq, _, Z_mdq = self.computeCGForces(qinf, Cp)
+        M_mdq = self.computeCGMoment(qinf, Cp, xcm)
+
+        # perform FD to get dX/du, dZ/du, dM/du
+        Xu = (X_pdu - X_mdu)/(2*du) # dX/du
+        Zu = (Z_pdu - Z_mdu)/(2*du) # dZ/du
+        Mu = (M_pdu - M_mdu)/(2*du) # dM/du
+
+        # perform FD to get dX/dw, dZ/dw, dM/dw
+        Xw = (X_pdw - X_mdw)/(2*dw) # dX/dw
+        Zw = (Z_pdw - Z_mdw)/(2*dw) # dZ/dw
+        Mw = (M_pdw - M_mdw)/(2*dw) # dM/dw
+
+        # perform FD to get dX/dq, dZ/dq, dM/dq
+        Xq = (X_pdq - X_mdq)/(2*dw) # dX/dq
+        Zq = (Z_pdq - Z_mdq)/(2*dw) # dZ/dq
+        Mq = (M_pdw - M_mdq)/(2*dw) # dM/dq
+
+        dF_vec = [Xu, Xw, Xq, Zu, Zw, Zq, Mu, Mw, Mq]
+        
+        return dF_vec
+
     def computeElasticMotion(self, U, omega, qinf, Mach,
                             nvecs, Kr, vwash, dwash, modes,
                             w_gust,
@@ -414,7 +517,7 @@ class DLM:
             Cp = self.solve(U, aoa=aoa_total, omega=omega, Mach=Mach)
             forces = self.addAeroForces(qinf, Cp)
             force = np.sum(forces)
-            moment = self.computeMoment(qinf, Cp, xcm)
+            moment = self.computeCGMoment(qinf, Cp, xcm)
 
             inertia_mat = (-omega**2)*np.array([[m, 0, mg],
                                                 [0, m, 0],
@@ -451,7 +554,7 @@ class DLM:
             Cp = self.solve(U, aoa=aoa_total, omega=omega, Mach=Mach)
             forces = self.addAeroForces(qinf, Cp)
             force = np.sum(forces)
-            moment = self.computeMoment(qinf, Cp, xcm)
+            moment = self.computeCGMoment(qinf, Cp, xcm)
 
             z0 = (-1.0/omega**2)*((force/m)-g)
             a0 = (-1.0/omega**2)*(moment/I)       
@@ -486,7 +589,6 @@ class DLM:
 
         return q
 
-    
     def computeStaticLoad(self, aoa, U, qinf, Mach, nvecs,
                           omega, modes, filename=None):
         '''
@@ -536,6 +638,26 @@ class DLM:
                                    self.is_symmetric, self.use_steady_kernel, 
                                    self.epstol)
         return
+
+    def computeRigidDownwash(self, U, cref, omega, uk, ukdot):
+        '''
+        Compute downwash vector for a given rigid body motion
+        where:
+        uk = [x y z phi theta psi]^T
+        ukdot = (d/dt)uk
+        and uk is located at the cg
+        '''
+
+        k = (cref*omega)/(2*U)
+        w = np.zeros(self.npanels, dtype=np.complex)
+        D1jk = np.array([0, 0, 0, 0, 1, 0], dtype=np.complex)
+        
+        for i in xrange(self.npanels):
+            D2jk = (-2.0/self.dXav[i])*np.array([0, 0, 1, 0, -self.dXav[i]/4.0, 0], dtype=np.complex)
+            #w[i] = np.dot((D1jk + 1j*k*D2jk), uk)
+            w[i] = np.dot(D1jk, uk) + k*np.dot(D2jk, ukdot)
+        
+        return w
     
     def solve(self, U, aoa=0.0, omega=0.0, Mach=0.0, w=None):
         '''
@@ -580,20 +702,37 @@ class DLM:
 
         return forces
 
-    def computeMoment(self, qinf, Cp, xcm):
+    def computeCGForces(self, qinf, Cp):
+        '''
+        Compute total aero forces about cg
+        '''
+
+        forces = self.addAeroForces(qinf, Cp)
+        x_forces = forces[:, 0::3]
+        y_forces = forces[:, 1::3]
+        z_forces = forces[:, 2::3]
+        X = np.sum(x_forces.flatten())
+        Y = np.sum(y_forces.flatten())
+        Z = np.sum(z_forces.flatten())
+        
+        return X, Y, Z
+
+    def computeCGMoment(self, qinf, Cp, xcm):
         '''
         Compute the aero moment about a chordwise location xcm
         '''
         
         forces = self.addAeroForces(qinf, Cp)
-        forces = forces[:, 1::3]
-        moment_arm = self.X[:, 0::3] - xcm
-        forces = forces.flatten()
-        moment_arm = moment_arm.flatten()
-        moments = np.dot(forces, moment_arm)
-        moment = np.sum(moments)
+        #x_forces = forces[:, 0::3]
+        #y_forces = forces[:, 1::3]
+        z_forces = forces[:, 2::3]
+        x_arm = self.X[:, 0::3] - xcm
+        z_forces = z_forces.flatten()
+        x_arm = x_arm.flatten()
+        y_moments = np.dot(z_forces, x_arm)
+        y_moment = np.sum(y_moments)
 
-        return moment
+        return y_moment
 
     def writeToFile(self, Cp, filename='solution.dat', u=None):
         '''
