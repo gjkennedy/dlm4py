@@ -353,13 +353,17 @@ class DLM:
         F = self.computeFlutterMat(U, p, qinf, Mach, nvecs, 
                                    Kr, vwash, dwash, modes)
         return np.linalg.det(F)/(omega**(2*nvecs))
-
-    def computeRigidEigs(self, U, rho, Mach, cref, aoa, omega, m, Iyy, xcm, W=0.0):
+    
+    
+    def computeRigidMat(self, U, rho, Mach, aoa, omega, cref, m, Iyy, xcm, theta_0=0.0, W0=0.0):
         '''
-        Compute eigenvalues and eigenvectors of rigid a/c motion
+        Compute 'A' matrix for rigid a/c motion
         '''
 
         g = 9.81
+        c = np.cos(theta_0)
+        s = np.sin(theta_0)
+        
         dF_array = self.computeAeroForceDerivs(U, rho, Mach, cref, aoa, omega, xcm)
         Xu = dF_array[0]
         Xw = dF_array[1]
@@ -370,14 +374,44 @@ class DLM:
         Mu = dF_array[6]
         Mw = dF_array[7]
         Mq = dF_array[8]
-        A = np.array([[Xu/m  , Xw/m  , ((Xq/m)-W), -g*np.cos(np.radians(aoa))],
-                      [Zu/m  , Zw/m  , ((Zq/m)+U), -g*np.sin(np.radians(aoa))],
-                      [Mu/Iyy, Mw/Iyy, Mq/Iyy    , 0.0                       ],
-                      [0.0   , 0.0   , 1.0       , 0.0                       ]])
-        w, v = np.linalg.eig(A)
+        
+        a = -U*s + W0*c
+        b = -U*s - W0*c
+                
+        A = np.array([[Xu/m   , Xw/m  , ((Xq/m)-W0), -g*c, 0.0, 0.0],
+                      [Zu/m   , Zw/m  , ((Zq/m)+U) , -g*s, 0.0, 0.0],
+                      [Mu/Iyy , Mw/Iyy, Mq/Iyy     , 0.0 , 0.0, 0.0],
+                      [0.0    , 0.0   , 1.0        , 0.0 , 0.0, 0.0],
+                      [c      , s     , 0.0        , a   , 0.0, 0.0],
+                      [-s     , c     , 0.0        , b   , 0.0, 0.0]])
 
-        return A, w, v
+        #w, v = np.linalg.eig(A)
 
+        return A #, w, v
+
+    def computeRigidForceVec(self, U, rho, Mach, omega, aoa, m, Iyy, xcm,
+                             theta_0=0.0, W0=0.0, w=None):
+        '''
+        compute force vector for rigid a/c motion
+        '''
+
+        g = 9.81
+        qinf = 0.5*rho*U**2
+        c = np.cos(theta_0)
+        s = np.sin(theta_0)
+
+        Cp = self.solve(U, aoa=aoa, omega=omega, Mach=Mach, w=w)
+        X, _, Z = self.computeCGForces(qinf, Cp)
+        M = self.computeCGMoment(qinf, Cp, xcm)
+        
+        f = np.array([ (X/m) - g*s + theta_0*g*c,
+                       (Z/m) + g*c + theta_0*g*s,
+                       M/Iyy,
+                       0,
+                       theta_0*(U*s - W0*s),
+                       theta_0*(-U*c + W0*s)])
+        
+        return f
     
     def computeAeroForceDerivs(self, U, rho, Mach, cref, aoa, omega, xcm):
         '''
@@ -391,49 +425,49 @@ class DLM:
         dq = 1.0e-1
         
         # compute aero forces for +du case
-        uk = np.array([0.0, 0.0, 0.0])
-        ukdot = np.array([du, 0.0, 0.0])
-        w = self.computeRigidDownwash(U, cref, omega, uk, ukdot, xcm)
+        x = np.array([du, 0.0, 0.0, 0.0, 0.0, 0.0])
+        #xdot = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        w = self.computeRigidDownwash(U+du, cref, omega, x, xcm) # update Dtrans i think
         Cp = self.solve(U, aoa=aoa, omega=omega, Mach=Mach, w=w)
         X_pdu, _, Z_pdu = self.computeCGForces(qinf, Cp)
         M_pdu = self.computeCGMoment(qinf, Cp, xcm)
 
         # compute aero forces for -du case
-        uk = np.array([0.0, 0.0, 0.0])
-        ukdot = np.array([-du, 0.0, 0.0])
-        w = self.computeRigidDownwash(U, cref, omega, uk, ukdot, xcm)
+        x = np.array([-du, 0.0, 0.0, 0.0, 0.0, 0.0])
+        #xdot = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        w = self.computeRigidDownwash(U-du, cref, omega, x, xcm)
         Cp = self.solve(U, aoa=aoa, omega=omega, Mach=Mach, w=w)
         X_mdu, _, Z_mdu = self.computeCGForces(qinf, Cp)
         M_mdu = self.computeCGMoment(qinf, Cp, xcm)
 
         # compute aero forces for +dw case
-        uk = np.array([0.0, 0.0, 0.0])
-        ukdot = np.array([0.0, dw, 0.0])
-        w = self.computeRigidDownwash(U, cref, omega, uk, ukdot, xcm)
+        x = np.array([0.0, dw, 0.0, 0.0, 0.0, 0.0])
+        #xdot = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        w = self.computeRigidDownwash(U, cref, omega, x, xcm)
         Cp = self.solve(U, aoa=aoa, omega=omega, Mach=Mach, w=w)
         X_pdw, _, Z_pdw = self.computeCGForces(qinf, Cp)
         M_pdw = self.computeCGMoment(qinf, Cp, xcm)
         
         # compute aero forces for -dw case
-        uk = np.array([0.0, 0.0, 0.0])
-        ukdot = np.array([ 0.0, -dw, 0.0])
-        w = self.computeRigidDownwash(U, cref, omega, uk, ukdot, xcm)
+        x = np.array([0.0, -dw, 0.0, 0.0, 0.0, 0.0])
+        #xdot = np.array([ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        w = self.computeRigidDownwash(U, cref, omega, x, xcm)
         Cp = self.solve(U, aoa=aoa, omega=omega, Mach=Mach, w=w)
         X_mdw, _, Z_mdw = self.computeCGForces(qinf, Cp)
         M_mdw = self.computeCGMoment(qinf, Cp, xcm)
         
         # compute aero forces for +dq case
-        uk = np.array([0.0, 0.0, 0.0])
-        ukdot = np.array([0.0, 0.0, dq])
-        w = self.computeRigidDownwash(U, cref, omega, uk, ukdot, xcm)
+        x = np.array([0.0, 0.0, dq, 0.0, 0.0, 0.0])
+        #xdot = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        w = self.computeRigidDownwash(U, cref, omega, x, xcm)
         Cp = self.solve(U, aoa=aoa, omega=omega, Mach=Mach, w=w)
         X_pdq, _, Z_pdq = self.computeCGForces(qinf, Cp)
         M_pdq = self.computeCGMoment(qinf, Cp, xcm)
         
         # compute aero forces for -dq case
-        uk = np.array([0.0, 0.0, 0.0])
-        ukdot = np.array([0.0, 0.0, -dq])
-        w = self.computeRigidDownwash(U, cref, omega, uk, ukdot, xcm)
+        x = np.array([0.0, 0.0, -dq, 0.0, 0.0, 0.0])
+        #xdot = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        w = self.computeRigidDownwash(U, cref, omega, x, xcm)
         Cp = self.solve(U, aoa=aoa, omega=omega, Mach=Mach, w=w)
         X_mdq, _, Z_mdq = self.computeCGForces(qinf, Cp)
         M_mdq = self.computeCGMoment(qinf, Cp, xcm)
@@ -459,7 +493,7 @@ class DLM:
 
     def computeElasticMotion(self, U, omega, qinf, Mach,
                             nvecs, Kr, vwash, dwash, modes,
-                            w_gust,
+                            W0,
                             aoa=0.0, tol=1e-4, max_iters=100):
         '''
         Compute the forced motion q due to sinusoidal gust
@@ -474,7 +508,7 @@ class DLM:
         # dwash = -dh/dx, vwash = -dh/dt
         mode_wash = 1j*omega*vwash/U + dwash
         
-        aoa_total = 1j*omega*w_gust/U + aoa
+        aoa_total = 1j*omega*W0/U + aoa
 
         for k in xrange(max_iters):
 
@@ -506,37 +540,28 @@ class DLM:
 
         return q
 
-    def computeRigidMotion(self, U, qinf, Mach, omega, m, Iyy, xcm, aoa,
-                             w_gust, max_iters=10):
+    def computeRigidMotion(self, U, rho, qinf, Mach, omega,
+                           aoa, cref, m, Iyy, xcm,
+                           theta_0=0.0, W0=0.0, x0=None, max_iters=10):
+        
+        if x0 is None:
+            x0 = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
 
-        g = 9.81      
-        aoa_total = 1j*omega*w_gust/U + aoa
+        A = self.computeRigidMat(U, rho, Mach, aoa, omega, cref, m, Iyy, xcm, theta_0=theta_0, W0=W0)
+        f = self.computeRigidForceVec(U, rho, Mach, omega, aoa, m, Iyy, xcm, theta_0=theta_0, W0=W0)
+        x = np.linalg.solve(1j*omega*np.eye(6) - A, x0 + f)
+        xdot = np.dot(A, x) + f
 
-        for i in xrange(max_iters):
-            
-            # w = computeRigidDownwash(_, _, _)
-            Cp = self.solve(U, aoa=aoa_total, omega=omega, Mach=Mach) #,w=w)
-            X, _, Z = self.computeCGForces(qinf, Cp)
-            M = self.computeCGMoment(qinf, Cp, xcm)
-
-            inertia_mat = (-omega**2)*np.array([[m, 0, mg],
-                                                [0, m, 0],
-                                                [0, 0, Iyy]])
-            force_vec = np.array([X, Z, M])
-            disp_vec = np.linalg.solve(inertia_mat, force_vec)
-            x_bar = disp_vec[0]
-            z_bar = disp_vec[1]
-            theta_bar = disp_vec[2]    
-
-            dzdt = 1j*omega*z_bar/U
-            dzdx = theta_bar
-
-            aoa_total = 1j*omega*w_gust/U + aoa + dzdt/U + theta_bar
-
-        return x_bar, z_bar, theta_bar
+        for i in range(max_iters):
+            w = self.computeRigidDownwash(U, cref, omega, x, xdot, xcm)
+            f = self.computeRigidForceVec(U, rho, Mach, omega, aoa, m, Iyy, xcm, theta_0=theta_0, W0=W0, w=w)
+            x = np.linalg.solve(1j*omega*np.eye(6) - A, x0 + f)
+            xdot = np.dot(A, x) + f
+        
+        return x, xdot
 
     def computeFullMotion(self, U, qinf, Mach, omega, m, I, xcm,
-                                   aoa, w_gust, Kr, modes, nvecs,
+                                   aoa, W0, Kr, modes, nvecs,
                                    vwash, dwash, max_iters=10):
 
         g = 9.81
@@ -547,7 +572,7 @@ class DLM:
         # dwash = -dh/dx, vwash = -dh/dt
         mode_wash = 1j*omega*vwash/U + dwash
        
-        aoa_total = 1j*omega*w_gust/U + aoa
+        aoa_total = 1j*omega*W0/U + aoa
 
         for i in xrange(max_iters):
 
@@ -562,7 +587,7 @@ class DLM:
             dzdt = 1j*omega*z0/U
             dzdx = a0
 
-            aoa_total = 1j*omega*w_gust/U + aoa + dzdt/U + a0 # check this
+            aoa_total = 1j*omega*W0/U + aoa + dzdt/U + a0 # check this
             
             mode_wash = 1j*omega*vwash/U + dwash + dzdt/U + dzdx
 
@@ -639,18 +664,24 @@ class DLM:
                                    self.epstol)
         return
 
-    def computeRigidDownwash(self, U, cref, omega, uk_cm, ukdot_cm, xcm):
+    def computeRigidDownwash(self, U, cref, omega, x, xcm, W0=0.0):
         '''
         Compute downwash vector for a given rigid body motion
         where:
-        uk_cm = [x z theta]
-        ukdot_cm = (d/dt)uk
+        x = [u w q theta x z]
+        xdot = (d/dt)x_cm
         '''
 
-        theta_cm = uk_cm[2]
-        u_cm = ukdot_cm[0]
-        w_cm = ukdot_cm[1]
-        q_cm = ukdot_cm[2]
+        u = x[0]
+        w = x[1]
+        q = x[2]
+        theta = x[3]
+
+        # better way to solve for xdot?
+        A = self.computeRigidMat(U, rho, Mach, aoa, omega, cref, m, Iyy, xcm, W0=W0)
+        xdot = np.dot(A, x)
+        
+        zdot = xdot[5]
         
         #k = (cref*omega)/(2*U)
         w = np.zeros(self.npanels, dtype=np.complex)
@@ -658,9 +689,10 @@ class DLM:
         
         for i in xrange(self.npanels):
             #D2jk = (-2.0/self.dXav[i])*np.array([0, 0, 1, 0, -self.dXav[i]/4.0, 0], dtype=np.complex)
-            #w[i] = np.dot((D1jk + 1j*k*D2jk), uk_cm)
+            #w[i] = np.dot((D1jk + 1j*k*D2jk), x_cm)
             xbar = xcm - self.Xr[i, 0]
-            w[i] = -w_cm - q_cm*xbar - (U+u_cm)*theta_cm
+            w[i] = -zdot - q*xbar - (U+u)*theta
+            w[i] += W0*(-1.0 - 1j*(omega/U)*self.Xr[i, 0]) # sinusoidal gust term, check this
             
         return w
     
