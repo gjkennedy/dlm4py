@@ -148,7 +148,7 @@ class GMRES:
         self.W[0].scale(1.0/self.res[0])
 
         # Perform the matrix-vector products
-        for i in xrange(self.msub):
+        for i in range(self.msub):
             # Apply the preconditioner
             self.pc.apply(self.W[i], self.Z[i])
 
@@ -156,7 +156,7 @@ class GMRES:
             self.mat.mult(self.Z[i], self.W[i+1])
 
             # Perform modified Gram-Schmidt orthogonalization
-            for j in xrange(i+1):
+            for j in range(i+1):
                 self.H[j,i] = self.W[j].dot(self.W[i+1])
                 self.W[i+1].axpy(-self.H[j,i], self.W[j])
 
@@ -166,7 +166,7 @@ class GMRES:
             self.W[i+1].scale(1.0/H[i+1,i])
 
             # Apply the Givens rotations
-            for j in xrange(i):
+            for j in range(i):
                 h1 = self.H[j, i]
                 h2 = self.H[j+1, i]
                 self.H[j, i] = h1*self.Qcos[j] + h2*self.Qsin[j]
@@ -192,14 +192,14 @@ class GMRES:
             res[i+1] = -h1*self.Qsin[i]
 
         # Compute the linear combination
-        for i in xrange(niters-1, -1, -1):
-            for j in xrange(i+1, niters):
+        for i in range(niters-1, -1, -1):
+            for j in range(i+1, niters):
                 res[i] -= self.H[i, j]*res[j]
             res[i] /= self.H[i, i]
 
         # Form the linear combination
         x.zero()
-        for i in xrange(niters):
+        for i in range(niters):
             x.axpy(res[i], self.Z[i])
 
         return niters
@@ -316,7 +316,7 @@ class DLM:
         F[:,:] = Kr[:,:]
 
         # Add the term I*p**2 from the M-orthonormal subspace
-        for i in xrange(nvecs):
+        for i in range(nvecs):
             F[i, i] += p**2
 
         # Compute the influence coefficient matrix
@@ -334,7 +334,7 @@ class DLM:
         forces = np.zeros((self.nnodes, 3), dtype=np.complex)
 
         # Add the forces to the vector
-        for i in xrange(nvecs):
+        for i in range(nvecs):
             forces[:,:] = 0.j
             dlm.addcpforces(qinf, Cp[:,i], self.X.T, self.conn.T, forces.T)
             F[:,i] += np.dot(modes.T, forces.flatten())
@@ -512,7 +512,7 @@ class DLM:
         
         aoa_total = 1j*omega*W0/U + aoa
 
-        for k in xrange(max_iters):
+        for k in range(max_iters):
 
             # Compute the wash as a function of time
             wash = aoa_total + np.dot(mode_wash, q)
@@ -571,7 +571,7 @@ class DLM:
        
         aoa_total = 1j*omega*W0/U + aoa
 
-        for i in xrange(max_iters):
+        for i in range(max_iters):
 
             Cp = self.solve(U, aoa=aoa_total, omega=omega, Mach=Mach)
             forces = self.addAeroForces(qinf, Cp)
@@ -684,7 +684,7 @@ class DLM:
         w = np.zeros(self.npanels, dtype=np.complex)
         #D1jk = np.array([0, 0, 0, 0, 1, 0], dtype=np.complex)
         
-        for i in xrange(self.npanels):
+        for i in range(self.npanels):
             #D2jk = (-2.0/self.dXav[i])*np.array([0, 0, 1, 0, -self.dXav[i]/4.0, 0], dtype=np.complex)
             #w[i] = np.dot((D1jk + 1j*k*D2jk), x_cm)
             xbar = xcm - self.Xr[i, 0]
@@ -706,7 +706,7 @@ class DLM:
             w = np.zeros(self.npanels, dtype=np.complex)
             
             # Compute the normalized downwash
-            for i in xrange(self.npanels):
+            for i in range(self.npanels):
                 w[i] = -1.0 - 1j*(omega/U)*self.Xr[i, 0]
 
         Cp = np.linalg.solve(self.Dtrans.T, w)
@@ -786,21 +786,21 @@ class DLM:
 
             # Write out the panel locations
             if u is None:
-                for j in xrange(3):
-                    for i in xrange(self.nnodes):
+                for j in range(3):
+                    for i in range(self.nnodes):
                         fp.write('%e\n'%(self.X[i, j]))
             else:
-                for j in xrange(3):
-                    for i in xrange(self.nnodes):
+                for j in range(3):
+                    for i in range(self.nnodes):
                         fp.write('%e\n'%(self.X[i, j] + u[i, j]))
 
             # Write out the real/imaginary Cp values
-            for i in xrange(self.npanels):
+            for i in range(self.npanels):
                 fp.write('%e\n'%(Cp[i].real))
-            for i in xrange(self.npanels):
+            for i in range(self.npanels):
                 fp.write('%e\n'%(Cp[i].imag))
 
-            for i in xrange(self.npanels):
+            for i in range(self.npanels):
                 fp.write('%d %d %d %d\n'%(
                         self.conn[i,0]+1, self.conn[i,1]+1,
                         self.conn[i,2]+1, self.conn[i,3]+1))
@@ -966,7 +966,7 @@ class DLM:
         # Allocate the Lanczos subspace vectors
         if len(self.Vm) < m:
             lvm = len(self.Vm)
-            for i in xrange(lvm, m):
+            for i in range(lvm, m):
                 self.Vm.append(self.tacs.createVec())
 
         # Initialize Vm as a random set of initial vectors
@@ -974,7 +974,7 @@ class DLM:
 
         # Iterate until we have sufficient accuracy
         eigvecs = np.zeros((m-1, m-1))
-        for i in xrange(max_iters):
+        for i in range(max_iters):
             alpha, beta = self.lanczos(self.Vm, sigma)
 
             # Compute the final coefficient
@@ -996,7 +996,7 @@ class DLM:
             eigvecs = eigvecs[indices,:]
 
             convrg = True
-            for j in xrange(r):
+            for j in range(r):
                 if np.fabs(b0*eigvecs[j,-1]) > tol:
                     convrg = False
 
@@ -1009,7 +1009,7 @@ class DLM:
                 # Form a linear combination of the best r eigenvectors
                 weights = np.sum(eigvecs[:r,:], axis=0)
                 self.Vm[0].scale(weights[0])
-                for j in xrange(m-1):
+                for j in range(m-1):
                     self.Vm[0].axpy(weights[j], self.Vm[j])
 
                 self.tacs.applyBCs(Vm[0])
@@ -1018,14 +1018,14 @@ class DLM:
         # K matrix for later useage
         if use_modes:
             self.Qm = []
-            for i in xrange(r):
+            for i in range(r):
                 # Normalize the eigenvectors so that they remain 
                 # M-orthonormal
                 eigvecs[i,:] /= np.sqrt(np.sum(eigvecs[i,:]**2))
             
                 # Compute the full eigenvector
                 qr = self.tacs.createVec()
-                for j in xrange(m-1):
+                for j in range(m-1):
                     qr.axpy(eigvecs[i,j], self.Vm[j])
                 self.Qm.append(qr)
 
@@ -1033,15 +1033,15 @@ class DLM:
             self.Kr = np.zeros((r,r))
 
             # Set the values of stiffness
-            for k in xrange(r):
+            for k in range(r):
                 self.Kr[k,k] = omega[k]**2
         else:
             # Set the stiffness matrix
             self.Kr = np.zeros((m,m))
 
-            for i in xrange(m):
+            for i in range(m):
                 self.kmat.mult(self.Vm[i], self.temp)
-                for j in xrange(i+1):
+                for j in range(i+1):
                     self.Kr[i,j] = self.temp.dot(self.Vm[j])
                     self.Kr[j,i] = self.Kr[i,j]
 
@@ -1054,7 +1054,7 @@ class DLM:
         self.Qm_dwash = np.zeros((self.npanels, len(self.Qm)))
 
         # Extract the natural frequencies of vibration
-        for k in xrange(len(self.Qm)):
+        for k in range(len(self.Qm)):
             # Transfer the eigenvector to the aerodynamic surface
             self.funtofem.transferDisps(self.Qm[k].getArray())
             disp = self.funtofem.getAeroDisps()
@@ -1110,7 +1110,7 @@ class DLM:
         Vm[0].scale(1.0/b0)
 
         # Execute the orthogonalization
-        for i in xrange(len(Vm)-1):
+        for i in range(len(Vm)-1):
             # Compute V[i+1] = (K - sigma*M)^{-1}*M*V[i]
             self.mmat.mult(Vm[i], self.temp)
             self.ksm.solve(self.temp, Vm[i+1])
@@ -1121,7 +1121,7 @@ class DLM:
 
             # Perform full modified Gram-Schmidt orthogonalization
             # with mass-matrix inner products
-            for j in xrange(i, -1, -1):
+            for j in range(i, -1, -1):
                 # Compute the inner product
                 self.mmat.mult(Vm[i+1], self.temp)
                 h = Vm[j].dot(self.temp)
@@ -1176,14 +1176,14 @@ class DLM:
         # eigenvectors
         vr = self.tacs.createVec()
         vc = self.tacs.createVec()
-        for i in xrange(m):
+        for i in range(m):
             vr.axpy(zl[i].real, self.Qm[i])
             vc.axpy(zl[i].imag, self.Qm[i])
 
         # Compute the linear combination for the right eigenvector
         ur = self.tacs.createVec()
         uc = self.tacs.createVec()
-        for i in xrange(m):
+        for i in range(m):
             ur.axpy(zr[i].real, self.Qm[i])
             uc.axpy(zr[i].imag, self.Qm[i])
 
@@ -1270,7 +1270,7 @@ class DLM:
 
         # Perform the flutter determinant iteration
         det0 = 1.0*det1
-        for k in xrange(max_iters):
+        for k in range(max_iters):
             # Compute the new value of p
             pnew = (p2*det1 - p1*det2)/(det1 - det2)
 
@@ -1330,7 +1330,7 @@ class DLM:
         Zr = np.zeros((m, m), dtype=np.complex) 
 
         # Iterate until convergence
-        for i in xrange(max_iters):
+        for i in range(max_iters):
             # Compute the flutter matrix at the current point
             F1 = self.computeFlutterMat(Uval, p, qinf, Mach,
                                         m, self.Kr, self.Qm_vwash, 
@@ -1386,8 +1386,8 @@ class DLM:
         pvals = np.zeros((nmodes, nvals), dtype=np.complex)
 
         # Now, evalue the flutter determinant at all iterations
-        for kmode in xrange(nmodes):
-            for i in xrange(nvals):
+        for kmode in range(nmodes):
+            for i in range(nvals):
                 qinf = 0.5*rho*Uvals[i]**2
     
                 # Compute an estimate of p based on the lowest natural
@@ -1426,7 +1426,7 @@ class DLM:
                 # Perform the flutter determinant iteration
                 max_iters = 50
                 det0 = 1.0*det1
-                for k in xrange(max_iters):
+                for k in range(max_iters):
                     # Compute the new value of p
                     pnew = (p2*det1 - p1*det2)/(det1 - det2)
 

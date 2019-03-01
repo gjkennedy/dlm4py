@@ -60,7 +60,7 @@ if 'blair' in sys.argv:
     print('   %12s %12s %12s %12s %12s'%(
         'Re(Cp_B)', 'Im(Cp_B)', 'Re(Cp)', 'Im(Cp)', 'Rel err'))
 
-    for j in xrange(nchord*nspan):
+    for j in range(nchord*nspan):
         print('%2d %12.4e %12.4e %12.4e %12.4e %12.4e'%(
             j, Cp_blair[j].real, Cp_blair[j].imag,
             Cp[j].real, Cp[j].imag, abs(Cp[j] - Cp_blair[j])/abs(Cp[j])))
@@ -105,12 +105,12 @@ else:
     # Set the angle of attack to use
     aoa = 0.5/180.0*np.pi
 
-    for k in xrange(nfreq):
+    for k in range(nfreq):
         # kr = omega*b/U
         omega = kr[k]*U/(0.5*chord)
 
         # Compute the downwash
-        for i in xrange(npanels):
+        for i in range(npanels):
             # Compute the contribution to the boundary condition:
             # -1/U*(dh/dt + U*dh/dx), where h = (x - 0.25c)*e^{j*omega*t}
             w[i] = -1.0 - 1j*(omega/U)*(dlm_solver.Xr[i, 0] - 0.25*chord)

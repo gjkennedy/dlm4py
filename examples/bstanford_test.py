@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 '''
 Analyze the straight and swept flat-plate wings for comparison against
 the results provided by Bret Stanford.
@@ -11,7 +13,7 @@ from tacs import TACS, elements, constitutive
 from dlm4py import DLM
 
 # Create the DLM object and add the mesh
-dlm_solver = DLM(is_symmetric=1)
+dlm_solver = DLM.DLM(is_symmetric=1)
 
 # Dimensions of the mesh
 nspan = 20
@@ -71,8 +73,8 @@ elems = []
 elem_conn = []
 
 # Add all the elements
-for j in xrange(ny):
-    for i in xrange(nx):
+for j in range(ny):
+    for i in range(nx):
         # Create the shell element class
         dv_num = i + nx*j
         stiff = constitutive.isoFSDT(rho, E, nu, kcorr, ys, t,
@@ -106,8 +108,8 @@ tacs.initialize()
 # Set the node locations
 X = tacs.createNodeVec()
 Xpts = X.getArray()
-for j in xrange(ny+1):
-    for i in xrange(nx+1):
+for j in range(ny+1):
+    for i in range(nx+1):
         node = i + (nx+1)*j
 
         y = Ly*(1.0*j/ny)
@@ -140,14 +142,14 @@ if 'velocity_sweep' in sys.argv:
     # Plot the results using
     symbols = ['-ko', '-ro', '-go', '-bo', '-mo']
     plt.figure()
-    for kmode in xrange(nmodes):
+    for kmode in range(nmodes):
         plt.plot(U, pvals[kmode,:].imag, symbols[kmode], 
                  label='mode %d'%(kmode))
         plt.legend()
         plt.grid()
 
     plt.figure()
-    for kmode in xrange(nmodes):
+    for kmode in range(nmodes):
         plt.plot(U, pvals[kmode,:].real, symbols[kmode], 
                  label='mode %d'%(kmode))
     plt.legend()
@@ -197,7 +199,7 @@ offset = [2, 1, -1, -2]
 weights = np.array([-1.0/12.0, 2.0/3.0, -2.0/3.0, 1.0/12.0])
 pvals = np.zeros(4, dtype=np.complex)
 
-for i in xrange(len(offset)):
+for i in range(len(offset)):
     # Set the design variables at x[0] + dh
     xnew = x + offset[i]*dh*px
     tacs.setDesignVars(xnew)
@@ -210,5 +212,5 @@ for i in xrange(len(offset)):
 
 pfd = np.dot(pvals, weights)/dh
 
-print 'FD =    %20.10e %20.10e'%(pfd.real, pfd.imag)
-print 'Deriv = %20.10e %20.10e'%(pd.real, pd.imag)
+print('FD =    %20.10e %20.10e'%(pfd.real, pfd.imag))
+print('Deriv = %20.10e %20.10e'%(pd.real, pd.imag))
