@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 '''
 Perform either the Blair or Rodden test cases
 '''
@@ -55,15 +57,15 @@ if 'blair' in sys.argv:
                   -2.8983e+00 + 1.4663e+00j,
                   -2.8893e+00 + 7.1186e-01j ]
 
-    print '   %12s %12s %12s %12s %12s'%(
-        'Re(Cp_B)', 'Im(Cp_B)', 'Re(Cp)', 'Im(Cp)', 'Rel err')
+    print('   %12s %12s %12s %12s %12s'%(
+        'Re(Cp_B)', 'Im(Cp_B)', 'Re(Cp)', 'Im(Cp)', 'Rel err'))
 
     for j in xrange(nchord*nspan):
-        print '%2d %12.4e %12.4e %12.4e %12.4e %12.4e'%(
+        print('%2d %12.4e %12.4e %12.4e %12.4e %12.4e'%(
             j, Cp_blair[j].real, Cp_blair[j].imag,
-            Cp[j].real, Cp[j].imag, abs(Cp[j] - Cp_blair[j])/abs(Cp[j]))
+            Cp[j].real, Cp[j].imag, abs(Cp[j] - Cp_blair[j])/abs(Cp[j])))
 
-    print 'CL = ', np.sum(Cp)/(nchord*nspan)
+    print('CL = ', np.sum(Cp)/(nchord*nspan))
 else:
     # Set up an aspect-ratio 20 wing
     nchord = 10
@@ -121,8 +123,9 @@ else:
         Cl[k] = np.sum(Cp)/(nchord*nspan)
         Clalpha[k] = Cl[k]
 
-        print '%3d %12.5e %12.5e %12.5e %12.5e %12.5e'%(
-            k, kr[k], Cl[k].real, Cl[k].imag, Clalpha[k].real, Clalpha[k].imag)
+        print('%3d %12.5e %12.5e %12.5e %12.5e %12.5e'%(
+            k, kr[k], Cl[k].real, Cl[k].imag,
+            Clalpha[k].real, Clalpha[k].imag))
 
     plt.figure()
     plt.plot(kr, Cl.imag, '-ko', label='Cl imaginary')

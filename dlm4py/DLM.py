@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 '''
 This is the python-level interface for the dlm code.
 '''
@@ -531,12 +533,7 @@ class DLM:
             A = Kr - omega**2*np.eye(nvecs)
 
             # Solve for the new values of q
-            q = np.linalg.solve(A, Fa)
-
-            #print q
-            # if np.absolute((wash-mode_wash)/mode_wash) > tol:
-            #    break
-                                       
+            q = np.linalg.solve(A, Fa)                                       
 
         return q
 
@@ -875,12 +872,12 @@ class DLM:
         pdk = np.dot(krr, p)
         pdm = np.dot(mrr, p)
 
-        print '          %12s %12s %12s %12s'%(
-            'Deriv', 'FD', 'Rel', 'Abs')
-        print 'Stiffness %12.4e %12.4e %12.4e %12.4e'%(
-            pdk, fdk, abs((fdk - pdk)/pdk), abs(fdk - pdk))
-        print 'Mass      %12.4e %12.4e %12.4e %12.4e'%(
-            pdm, fdm, abs((fdm - pdm)/pdm), abs(fdm - pdm))
+        print('          %12s %12s %12s %12s'%(
+            'Deriv', 'FD', 'Rel', 'Abs'))
+        print('Stiffness %12.4e %12.4e %12.4e %12.4e'%(
+            pdk, fdk, abs((fdk - pdk)/pdk), abs(fdk - pdk)))
+        print('Mass      %12.4e %12.4e %12.4e %12.4e'%(
+            pdm, fdm, abs((fdm - pdm)/pdm), abs(fdm - pdm)))
 
         return
 
@@ -980,8 +977,6 @@ class DLM:
         for i in xrange(max_iters):
             alpha, beta = self.lanczos(self.Vm, sigma)
 
-            print alpha, beta
-
             # Compute the final coefficient
             b0 = beta[-1]
 
@@ -989,7 +984,7 @@ class DLM:
             info = dlm.tridiageigvecs(alpha, beta, eigvecs.T)
             
             if info != 0:
-                print 'Error in the tri-diagonal eigenvalue solver'
+                print('Error in the tri-diagonal eigenvalue solver')
 
             # Compute the true eigenvalues/vectors
             omega = np.sqrt(1.0/alpha + sigma)
@@ -1075,7 +1070,7 @@ class DLM:
         # Set the values of omega
         self.omega = omega[:r]
 
-        print 'omega = ', self.omega[:r]
+        print('omega = ', self.omega[:r])
 
         return
 
@@ -1199,7 +1194,7 @@ class DLM:
             self.mmat.mult(vc, self.temp)
             err += uc.dot(self.temp) + 1j*self.temp.dot(ur)
             err -= 1.0
-            print 'Orthogonality error ', err
+            print('Orthogonality error ', err)
 
         # Compute all of the derivatives
         krr = np.zeros(num_design_vars)
@@ -1292,10 +1287,10 @@ class DLM:
                     
             # Print out the iteration history for impaitent people
             if k == 0:
-                print '%4s %10s %15s %15s'%(
-                    'Iter', 'Det', 'Re(p)', 'Im(p)') 
-            print '%4d %10.2e %15.10f %15.10f'%(
-                k, abs(det2), p2.real, p2.imag)
+                print('%4s %10s %15s %15s'%(
+                    'Iter', 'Det', 'Re(p)', 'Im(p)'))
+            print('%4d %10.2e %15.10f %15.10f'%(
+                k, abs(det2), p2.real, p2.imag))
 
             if abs(det2) < tol*abs(det0):
                 break
@@ -1354,10 +1349,10 @@ class DLM:
 
             # Print out the iteration history for impaitent people
             if i == 0:
-                print '%4s %10s %15s %15s'%(
-                    'Iter', 'Eig', 'Re(p)', 'Im(p)') 
-            print '%4d %10.2e %15.10f %15.10f'%(
-                i, abs(eigs[k]), p.real, p.imag)
+                print('%4s %10s %15s %15s'%(
+                    'Iter', 'Eig', 'Re(p)', 'Im(p)')) 
+            print('%4d %10.2e %15.10f %15.10f'%(
+                i, abs(eigs[k]), p.real, p.imag))
 
             if abs(eigs[k]) < tol:
                 return p
@@ -1448,10 +1443,10 @@ class DLM:
                     
                     # Print out the iteration history for impaitent people
                     if k == 0:
-                        print '%4s %10s %10s %10s'%(
-                            'Iter', 'Det', 'Re(p)', 'Im(p)') 
-                    print '%4d %10.2e %10.6f %10.6f'%(
-                        k, abs(det2), p2.real, p2.imag)
+                        print('%4s %10s %10s %10s'%(
+                            'Iter', 'Det', 'Re(p)', 'Im(p)'))
+                    print('%4d %10.2e %10.6f %10.6f'%(
+                        k, abs(det2), p2.real, p2.imag))
 
                     if abs(det2) < 1e-6*abs(det0):
                         break
@@ -1459,10 +1454,10 @@ class DLM:
                 # Store the final value of p
                 pvals[kmode, i] = p2
 
-            print '%4s %10s %10s %10s'%(
-                'Iter', 'U', 'Re(p)', 'Im(p)')
-            print '%4d %10.6f %10.6f %10.6f'%(
-                i, U[i], pvals[kmode,i].real, pvals[kmode,i].imag)
+            print('%4s %10s %10s %10s'%(
+                'Iter', 'U', 'Re(p)', 'Im(p)'))
+            print('%4d %10.6f %10.6f %10.6f'%(
+                i, U[i], pvals[kmode,i].real, pvals[kmode,i].imag))
 
         # Return the final values
         return pvals
